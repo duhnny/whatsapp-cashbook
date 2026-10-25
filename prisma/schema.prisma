@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client"
+  output   = "./client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum CredentialsProvider {
+  CLERK
+}
+
+enum Role {
+  USER
+  ADMIN
+  SUPERADMIN
+}
+
+model User {
+  id                    Int            @id @default(autoincrement())
+  credentialsProvider   CredentialsProvider
+  credentialsProviderId String?        @unique
+  email                 String?        @unique
+  name                  String
+
+  roles                 Role[]
+  active                Boolean        @default(true)
+
+  createdAt             DateTime       @default(now())
+  createdById           Int
+  createdBy             User           @relation("createdBy", fields: [createdById], references: [id])
+
+  updatedAt             DateTime       @updatedAt
+  updatedById           Int
+  updatedBy             User           @relation("updatedBy", fields: [updatedById], references: [id])
+
+  // opposite relations
+  createdUsers          User[]         @relation("createdBy")
+  updatedUsers          User[]         @relation("updatedBy")
+}
