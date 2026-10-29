@@ -52,21 +52,38 @@ app.register(formbody);
 
 // Log de requisições (apenas em desenvolvimento)
 if (process.env.NODE_ENV === 'development') {
-  app.addHook('preHandler', (req, res, done) => {
+  app.addHook('preHandler', async (req, res) => {
     logger.log(InfoLvl.Debug, 'Incoming request', {
+      id: req.id,
       method: req.method,
       path: req.url,
-    })
-
-    done();
+      body: req.body,
+    });
   });
 
-  app.addHook('onResponse', (req, res, done) => {
+  app.addHook('onSend', async (req, res, payload) => {
     logger.log(InfoLvl.Debug, 'Outgoing response', {
-      status: res.status,
-    })
+      id: req.id,
+      status: res.raw.statusCode,
+      body: payload,
+    });
 
-    done();
+    return payload;
+  })
+} else {
+  app.addHook('preHandler', async (req, res) => {
+    logger.log(InfoLvl.Debug, 'Incoming request', {
+      id: req.id,
+      method: req.method,
+      path: req.url,
+    });
+  });
+
+  app.addHook('onResponse', (req, res) => {
+    logger.log(InfoLvl.Debug, 'Outgoing response', {
+      id: req.id,
+      status: res.raw.statusCode,
+    });
   })
 }
 
