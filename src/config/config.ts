@@ -5,7 +5,7 @@ import z from 'zod';
 import { InfoLvl, logger } from '../utils/logging.js';
 import { HyperlinkSchema } from '../utils/strings.js';
 import { createClerkClient } from '@clerk/fastify';
-import { DEFAULT_PORT } from './constants.js';
+import { DEFAULT_PORT, DEFAULT_WHATSAPP_SESSION_EXPIRY_SECS } from './constants.js';
 
 // parse env variables
 dotenv.config({
@@ -31,16 +31,19 @@ const listOfUrls = z
   .pipe(z.array(HyperlinkSchema));
 
 const ConfigSchema = z.object({
-  PORT:                  optionalIntSchema,
-  BACKEND_HOST:          z.hostname(),
-  ALLOWED_ORIGINS:       listOfUrls,
+  PORT:                         optionalIntSchema,
+  BACKEND_HOST:                 z.hostname(),
+  ALLOWED_ORIGINS:              listOfUrls,
 
   // clerk config
-  CLERK_API_VERSION:     z.string(),
-  CLERK_API_URL:         HyperlinkSchema,
-  CLERK_PUBLISHABLE_KEY: z.string(),
-  CLERK_SECRET_KEY:      z.string(),
-  CLERK_JWT_KEY:         z.string(),
+  CLERK_API_VERSION:            z.string(),
+  CLERK_API_URL:                HyperlinkSchema,
+  CLERK_PUBLISHABLE_KEY:        z.string(),
+  CLERK_SECRET_KEY:             z.string(),
+  CLERK_JWT_KEY:                z.string(),
+
+  // whatsapp config
+  WHATSAPP_SESSION_EXPIRY_SECS: optionalIntSchema,
 });
 
 const parsed = ConfigSchema.safeParse(process.env);
@@ -51,6 +54,9 @@ if (!parsed.success) {
 export const config = {
   ...parsed.data,
   PORT: parsed.data.PORT || DEFAULT_PORT,
+  WHATSAPP_SESSION_EXPIRY_SECS:
+    parsed.data.WHATSAPP_SESSION_EXPIRY_SECS
+    || DEFAULT_WHATSAPP_SESSION_EXPIRY_SECS,
 };
 
 // initialize clerk for auth
