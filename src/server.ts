@@ -11,9 +11,10 @@ import { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { healthRoutes } from './routes/health.js';
 import { webhookRoutes } from './routes/webhook.js';
 
-import { err } from './utils/result.js';
+import { err, tryCatch } from './utils/result.js';
 import { InternalServerError } from './schemas/global.js';
-import { config } from './config/config.js';
+import { agentMemory, config } from './config/config.js';
+import { info } from 'node:console';
 
 // Isto permite serialização de big int
 (BigInt.prototype as any).toJSON = function () {
@@ -109,6 +110,14 @@ app.setErrorHandler((error, req, res) => {
 });
 
 const start = async () => {
+  // setup agent memory tables in database
+  const agentMemorySetupResult = await tryCatch(agentMemory.setup());
+
+  if (agentMemorySetupResult._tag === 'err') {
+    logger.log(InfoLvl.Fatal, 'Unable to setup agent memory. Aborting...');
+    process.exit(1);
+  }
+
   try {
     // O await garante que o Node só passa para a próxima linha APÓS o bind do Kernel do Linux
     const address = await app.listen({ 
