@@ -1,11 +1,15 @@
 import dotenv from 'dotenv';
 import { PrismaClient } from '../../prisma/client/client.js';
-import { PrismaPg } from '@prisma/adapter-pg';
-import z from 'zod';
 import { InfoLvl, logger } from '../utils/logging.js';
 import { HyperlinkSchema } from '../utils/strings.js';
-import { createClerkClient } from '@clerk/fastify';
 import { DEFAULT_PORT, DEFAULT_WHATSAPP_SESSION_EXPIRY_SECS } from './constants.js';
+
+import { PrismaPg } from '@prisma/adapter-pg';
+import z from 'zod';
+import pg from 'pg';
+import { createClerkClient } from '@clerk/fastify';
+import { ChatDeepSeek } from '@langchain/deepseek';
+import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 
 // parse env variables
 dotenv.config({
@@ -35,6 +39,10 @@ const ConfigSchema = z.object({
   BACKEND_HOST:                 z.hostname(),
   ALLOWED_ORIGINS:              listOfUrls,
 
+  // db config
+  DATABASE_URL:                 HyperlinkSchema,
+  AGENT_MEMORY_DATABASE_URL:    HyperlinkSchema,
+
   // clerk config
   CLERK_API_VERSION:            z.string(),
   CLERK_API_URL:                HyperlinkSchema,
@@ -44,6 +52,9 @@ const ConfigSchema = z.object({
 
   // whatsapp config
   WHATSAPP_SESSION_EXPIRY_SECS: optionalIntSchema,
+
+  // deepseek config
+  DEEPSEEK_MODEL:               z.string(),
 });
 
 const parsed = ConfigSchema.safeParse(process.env);
@@ -69,7 +80,7 @@ export const auth = createClerkClient({
 });
 
 // initialize db
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg({ connectionString: config.DATABASE_URL });
 export const db = new PrismaClient({
   adapter: adapter,
   log: [
@@ -83,3 +94,16 @@ export const db = new PrismaClient({
 db.$on('error', (err) => {
   logger.log(InfoLvl.Trace, 'Prisma error', err);
 });
+
+// initialize DeepSeek model
+export const model = new ChatDeepSeek({
+  model: config.DEEPSEEK_MODEL,
+  temperature: 0.3,
+});
+
+// initialize agent memory
+const agentMemoryPool = new pg.Pool({
+  connectionString: config.AGENT_MEMORY_DATABASE_URL,
+});
+
+export const agentMemory = new PostgresSaver(agentMemoryPool);
