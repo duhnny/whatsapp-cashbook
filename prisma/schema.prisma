@@ -23,9 +23,12 @@ model User {
   credentialsProviderId String?        @unique
   email                 String?        @unique
   name                  String
+  phone                 Int
 
   roles                 Role[]
   active                Boolean        @default(true)
+
+  whatsappAnonId        Int
 
   createdAt             DateTime       @default(now())
   createdById           Int
@@ -38,4 +41,67 @@ model User {
   // opposite relations
   createdUsers          User[]         @relation("createdBy")
   updatedUsers          User[]         @relation("updatedBy")
+  sessions              Session[]      @relation("user")
+  transactions          Transaction[]  @relation("user")
+  updatedTransactions   Transaction[]  @relation("updatedBy")
+}
+
+enum SessionStatus {
+  created
+  pending_confirmation
+  concluded
+}
+
+model Session {
+  id        Int      @id @default(autoincrement())
+  status    SessionStatus
+
+  userId    Int
+  user      User     @relation("user", fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  // opposite relations
+  outboxTransactions OutboxTransaction[] @relation("session")
+}
+
+enum TransactionCategory {
+  payment
+  transportation
+  food_and_beverage @map("food and beverage")
+  groceries
+  bills
+  subscriptions
+  others
+}
+
+model Transaction {
+  id          Int      @id @default(autoincrement())
+
+  userId      Int
+  user        User     @relation("user", fields: [userId], references: [id])
+
+  amount      Decimal  @db.Decimal(10, 2)
+  category    TransactionCategory
+  description String
+
+  createdAt   DateTime @default(now())
+
+  updatedAt   DateTime
+  updatedById Int
+  updatedBy   User     @relation("updatedBy", fields: [updatedById], references: [id])
+}
+
+model OutboxTransaction {
+  id          Int      @id @default(autoincrement())
+
+  sessionId   Int
+  session     Session  @relation("session", fields: [sessionId], references: [id])
+
+  amount      Decimal  @db.Decimal(10, 2)
+  category    TransactionCategory
+  description String
+
+  createdAt   DateTime @default(now())
 }
