@@ -52,9 +52,19 @@ const ConfigSchema = z.object({
 
   // whatsapp config
   WHATSAPP_SESSION_EXPIRY_SECS: optionalIntSchema,
+  WHATSAPP_API_BASE_URL:        HyperlinkSchema,
+  OPENWA_SESSION_ID:            z.string(),
+  OPENWA_API_KEY:               z.string(),
 
   // deepseek config
   DEEPSEEK_MODEL:               z.string(),
+  DEEPSEEK_API_KEY:             z.string(),
+
+  LANGSMITH_TRACING:            z.coerce.boolean(),
+  LANGSMITH_ENDPOINT:           HyperlinkSchema,
+  LANGSMITH_API_KEY:            z.string(),
+  LANGSMITH_AGENT_ID:           z.string(),
+  LANGSMITH_AGENT_ENVIRONMENT:  z.string(),
 });
 
 const parsed = ConfigSchema.safeParse(process.env);
@@ -97,6 +107,7 @@ db.$on('error', (err) => {
 
 // initialize DeepSeek model
 export const model = new ChatDeepSeek({
+  apiKey: config.DEEPSEEK_API_KEY,
   model: config.DEEPSEEK_MODEL,
   temperature: 0.3,
 });
