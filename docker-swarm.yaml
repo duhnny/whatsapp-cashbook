@@ -3,7 +3,6 @@ services:
     image: localhost/whatsapp-cashbook
     environment:
       ENV_FILE: /run/secrets/whatsapp-cashbook-env
-      NODE_ENV: development
     secrets:
       - whatsapp-cashbook-env
     deploy:
