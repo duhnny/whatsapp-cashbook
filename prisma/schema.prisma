@@ -31,12 +31,12 @@ model User {
   whatsappAnonId        BigInt
 
   createdAt             DateTime       @default(now())
-  createdById           Int
-  createdBy             User           @relation("createdBy", fields: [createdById], references: [id])
+  createdById           Int?
+  createdBy             User?          @relation("createdBy", fields: [createdById], references: [id])
 
   updatedAt             DateTime       @updatedAt
-  updatedById           Int
-  updatedBy             User           @relation("updatedBy", fields: [updatedById], references: [id])
+  updatedById           Int?
+  updatedBy             User?          @relation("updatedBy", fields: [updatedById], references: [id])
 
   // opposite relations
   createdUsers          User[]         @relation("createdBy")
