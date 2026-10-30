@@ -86,7 +86,7 @@ model Transaction {
   category    TransactionCategory
   description String
 
-  createdAt   DateTime @default(now())
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
 
   updatedAt   DateTime
   updatedById Int
@@ -103,5 +103,5 @@ model OutboxTransaction {
   category    TransactionCategory
   description String
 
-  createdAt   DateTime @default(now())
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
 }
