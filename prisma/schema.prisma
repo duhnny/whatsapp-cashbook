@@ -23,12 +23,12 @@ model User {
   credentialsProviderId String?        @unique
   email                 String?        @unique
   name                  String
-  phone                 Int
+  phone                 BigInt
 
   roles                 Role[]
   active                Boolean        @default(true)
 
-  whatsappAnonId        Int
+  whatsappAnonId        BigInt
 
   createdAt             DateTime       @default(now())
   createdById           Int
