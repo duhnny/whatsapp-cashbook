@@ -26,7 +26,7 @@ fi
 # download necessary images
 echo "-> building images"
 
-docker build -t 'localhost/whatsapp-cashbook' . &> /dev/null
+docker build -t 'localhost/whatsapp-cashbook' . #&> /dev/null
 
 echo "-> image built"
 
