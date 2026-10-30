@@ -5,6 +5,9 @@ services:
       ENV_FILE: /run/secrets/whatsapp-cashbook-env
     secrets:
       - whatsapp-cashbook-env
+    networks:
+      - db
+      - whatsapp
     deploy:
       mode: replicated
       replicas: 1
