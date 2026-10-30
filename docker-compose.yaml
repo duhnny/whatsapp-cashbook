@@ -1,0 +1,20 @@
+services:
+  cashbook:
+    image: localhost/whatsapp-cashbook
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    environment:
+      ENV_FILE: /run/secrets/whatsapp-cashbook-env
+      NODE_ENV: development
+    secrets:
+      - whatsapp-cashbook-env
+
+secrets:
+  whatsapp-cashbook-env:
+    file: ./.env
+
+networks:
+  whatsapp:
+    external: true
+    name: whatsapp
