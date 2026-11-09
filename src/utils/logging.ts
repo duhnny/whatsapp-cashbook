@@ -7,7 +7,7 @@ export enum InfoLvl {
   Trace   = "TRA",
 }
 
-class Logger {
+export class Logger {
   public log(infoLvl: InfoLvl, message: string, data?: object): void {
     const timestamp = new Date().toISOString();
     console.log(JSON.stringify({
