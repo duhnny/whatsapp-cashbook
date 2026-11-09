@@ -53,14 +53,20 @@ enum SessionStatus {
   concluded
 }
 
+enum SessionKind {
+  whatsapp_confirmation
+  transaction
+}
+
 model Session {
-  id        Int      @id @default(autoincrement())
+  id        Int           @id @default(autoincrement())
+  kind      SessionKind   @default(transaction)
   status    SessionStatus
 
   userId    Int
-  user      User     @relation("user", fields: [userId], references: [id])
+  user      User          @relation("user", fields: [userId], references: [id])
 
-  createdAt DateTime @default(now())
+  createdAt DateTime      @default(now())
   expiresAt DateTime
 
   // opposite relations
