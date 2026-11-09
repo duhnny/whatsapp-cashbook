@@ -44,6 +44,7 @@ model User {
   sessions              Session[]      @relation("user")
   transactions          Transaction[]  @relation("user")
   updatedTransactions   Transaction[]  @relation("updatedBy")
+  events                Event[]        @relation("user")
 }
 
 enum SessionStatus {
@@ -106,4 +107,22 @@ model OutboxTransaction {
   description String
 
   createdAt   DateTime @default(now()) @db.Timestamptz(3)
+}
+
+enum EventName {
+  users_creation
+}
+
+model Event {
+  id              Int        @id @default(autoincrement())
+  name            EventName
+
+  userId          Int?
+  user            User?      @relation("user", fields: [userId], references: [id])
+
+  processingStage Int        @default(0)
+  done            Boolean    @default(false)
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
 }
