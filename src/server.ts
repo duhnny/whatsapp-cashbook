@@ -8,13 +8,13 @@ import cookie from '@fastify/cookie';
 import { ZodTypeProvider } from 'fastify-type-provider-zod';
 
 // Importar rotas
+import { authRoutes } from './routes/auth.js';
 import { healthRoutes } from './routes/health.js';
 import { webhookRoutes } from './routes/webhook.js';
 
 import { err, tryCatch } from './utils/result.js';
 import { InternalServerError } from './schemas/global.js';
 import { agentMemory, config } from './config/config.js';
-import { info } from 'node:console';
 
 // Isto permite serialização de big int
 (BigInt.prototype as any).toJSON = function () {
@@ -89,6 +89,7 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // Rotas da API
+app.register(authRoutes,    { prefix: '/auth' });
 app.register(healthRoutes,  { prefix: '/health' });
 app.register(webhookRoutes, { prefix: '/webhook' });
 
