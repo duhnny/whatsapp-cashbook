@@ -28,7 +28,7 @@ model User {
   roles                 Role[]
   active                Boolean        @default(true)
 
-  whatsappAnonId        BigInt
+  whatsappAnonId        BigInt?
 
   createdAt             DateTime       @default(now())
   createdById           Int?
