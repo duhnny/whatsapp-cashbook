@@ -7,6 +7,7 @@ import { InfoLvl, logger } from "../utils/logging.js";
 import { err, ok, tryCatch } from "../utils/result.js";
 import { eventsHandlerService } from "../services/events.js";
 import { whatsappService } from "../services/whatsapp.js";
+import { quickHash } from "../utils/strings.js";
 
 export class UserAlreadyExistsError extends Error {
   readonly _tag = 'UserAlreadyExists'
@@ -85,6 +86,7 @@ const signup = async (req: TypedRequest<{ body: SignupRequestBody }>) => {
     const event = await tx.event.create({
       data: {
         name: 'users_creation',
+        idempotencyKey: quickHash(),
         userId: user.id,
       },
     });
