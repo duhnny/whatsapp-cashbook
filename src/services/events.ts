@@ -104,6 +104,7 @@ class EventsHandlerService {
     this.running = false;
   }
 
+  // TODO: process whatsapp verification event
   private async processEvent(event: Event) {
     if (event.name === 'users_creation') {
       let done = event.done;

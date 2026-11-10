@@ -11,6 +11,7 @@ import { AsyncReturn } from "../utils/types.js";
 
 import { FastifyPluginAsync } from "fastify";
 
+// TODO: process for whatsapp verification session too
 const processUnofficialWebhook = async (req: TypedRequest<{ body: UnofficialWebhookBody }>) => {
   if (req.body.data.type !== 'text') {
     return ok({
