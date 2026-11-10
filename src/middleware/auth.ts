@@ -1,12 +1,10 @@
 import { InfoLvl, logger } from '../utils/logging.js';
-import { auth, config, db } from '../config/config.js';
-import { preHandlerHookHandler } from 'fastify';
+import { config, db } from '../config/config.js';
 import z from 'zod';
 import jwt from 'jsonwebtoken';
 import { CredentialsProvider, Role } from '../../prisma/client/enums.js';
-import { err, syncTryCatch, tryCatch } from '../utils/result.js';
-import { BasicRequest, BasicUserData, InternalServerError, RoleRequiredError, UnauthenticatedError } from '../schemas/global.js';
-import { getAuth } from '@clerk/fastify';
+import { err, tryCatch } from '../utils/result.js';
+import { AuthedRequest, BasicRequest, BasicUserData, InternalServerError, RoleRequiredError, UnauthenticatedError } from '../schemas/global.js';
 import { HyperlinkSchema } from '../utils/strings.js';
 
 const DecodedTokenSchema = z.object({
@@ -36,10 +34,10 @@ export class MalformedJWTError extends Error {
   }
 }
 
-export const authenticatedRoute = <T, R extends BasicRequest>(
+export const authenticatedRoute = <T, R extends AuthedRequest>(
   next: (req: R) => Promise<T>
 ) => {
-  return async (req: R) => {
+  return async (req: Omit<R, 'user'>) => {
     // Your public key should be set as an environment variable
     const publicKey = config.CLERK_JWT_KEY;
 
@@ -151,7 +149,7 @@ export const authenticatedRoute = <T, R extends BasicRequest>(
     // add user data to request object
     return await next({
       ...req,
-      user,
+      user: user.value,
     } as R);
   }
 }
