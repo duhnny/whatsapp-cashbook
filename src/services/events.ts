@@ -5,6 +5,7 @@ import { InfoLvl, logger, Logger } from '../utils/logging.js';
 import { err, ok, tryCatch } from '../utils/result.js';
 
 import { User } from '@clerk/fastify';
+import { whatsappService } from './whatsapp.js';
 
 class InconsistentEventError extends Error {
   readonly _tag = 'InconsistentEvent'
@@ -35,6 +36,30 @@ class UnknownEventError extends Error {
     super();
     this.name = name;
     this.message = message;
+  }
+}
+
+class UnableToUpdateEventError extends Error {
+  readonly _tag = 'UnableToUpdateEvent'
+  message: string
+  id: Event['id']
+  name: EventName
+  processingStage: number
+  done: boolean
+
+  constructor(params: {
+    message: string
+    id: Event['id']
+    name: EventName
+    processingStage: number
+    done: boolean
+  }) {
+    super();
+    this.message = params.message;
+    this.id = params.id;
+    this.name = params.name;
+    this.processingStage = params.processingStage;
+    this.done = params.done;
   }
 }
 
@@ -104,7 +129,6 @@ class EventsHandlerService {
     this.running = false;
   }
 
-  // TODO: process whatsapp verification event
   private async processEvent(event: Event) {
     if (event.name === 'users_creation') {
       let done = event.done;
@@ -240,6 +264,93 @@ class EventsHandlerService {
         processingStage,
         done,
       });
+    } else if (event.name === 'whatsapp_confirmation_requested') {
+      let processingStage = event.processingStage;
+
+      if (processingStage === 0) {
+        // event just created: we need to send a whatsapp message
+        if (event.userId === null) {
+          this.logger.log(InfoLvl.Error, `${EventName.users_creation} event does not have user attatched`, {
+            id: event.id,
+          });
+
+          return err(new InconsistentEventError(`${EventName.users_creation} event does not have user attatched`));
+        }
+
+        const user = await tryCatch(db.user.findUnique({
+          where: {
+            id: event.userId,
+          },
+        }));
+
+        if (user._tag === 'err') {
+          this.logger.log(InfoLvl.Error, `Unable to find user for ${EventName.users_creation} event`, {
+            eventId: event.id,
+            userId: event.userId,
+          });
+
+          return err(new InternalServerError(`Unable to find user for ${EventName.users_creation} event`));
+        }
+
+        if (!user.value) {
+          this.logger.log(InfoLvl.Error, `User for ${EventName.users_creation} event not found`, {
+            eventId: event.id,
+            userId: event.userId,
+          });
+
+          return err(new UserNotFoundError(`User for ${EventName.users_creation} event not found`));
+        }
+
+        // send whatsapp message
+        const whatsappResponse = await whatsappService.sendText(
+          user.value,
+          `Verificação por WhatsApp: Se você é ${user.value.name} e registrou recentemente nos`
+          + `nossos serviços, por favor digite 'SIM' para confirmar. Caso contrário, responda com 'NÃO'.`
+        );
+
+        if (whatsappResponse._tag === 'err') {
+          logger.log(InfoLvl.Warning, 'Unable to send whatsapp verification message', {
+            userId: event.userId,
+            error: whatsappResponse.error,
+          });
+
+          return whatsappResponse;
+        }
+
+        const newWhatsappConfirmationEvent = await tryCatch(db.event.update({
+          where: {
+            id: event.id,
+          },
+          data: {
+            processingStage: 1,
+          },
+        }));
+
+        if (newWhatsappConfirmationEvent._tag === 'err') {
+          logger.log(InfoLvl.Warning, 'Unable to update whatsapp confirmation event after sending message', {
+            eventId: event.id,
+            processingStage: 1,
+            done: false,
+          });
+
+          return err(new UnableToUpdateEventError({
+            message: 'Message was sent but the event could not be updated',
+            id: event.id,
+            name: event.name,
+            processingStage: 1,
+            done: false,
+          }));
+        }
+
+        // if we get here, everything went right
+        logger.log(InfoLvl.Debug, 'Whatsapp verification message sent sucessfully!', {
+          sucess: whatsappResponse.value.success,
+        });
+        return ok({
+          processingStage: 1,
+          done: false,
+        });
+      }
     }
 
     this.logger.log(InfoLvl.Fatal, 'Unknown event in event handler service', {
