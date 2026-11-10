@@ -133,4 +133,5 @@ model Event {
 
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
+  expiresAt       DateTime?
 }
