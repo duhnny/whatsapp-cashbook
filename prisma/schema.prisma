@@ -123,6 +123,7 @@ enum EventName {
 model Event {
   id              Int        @id @default(autoincrement())
   name            EventName
+  idempotencyKey  String
 
   userId          Int?
   user            User?      @relation("user", fields: [userId], references: [id])
