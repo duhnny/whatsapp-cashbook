@@ -95,6 +95,17 @@ export class InternalServerError {
   }
 }
 
+export class InconsistentEventError extends Error {
+  readonly _tag = 'InconsistentEvent'
+  message: string
+
+  constructor(message: string) {
+    super();
+    this.message = message;
+  }
+}
+
+
 export const IdSchema = z.int();
 export const StringIdSchema = z.coerce.number().int();
 

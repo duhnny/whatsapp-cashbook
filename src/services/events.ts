@@ -1,21 +1,11 @@
 import { Event, EventName } from '../../prisma/client/client.js';
 import { auth, db } from '../config/config.js';
-import { InternalServerError, UserNotFoundError } from '../schemas/global.js';
+import { InconsistentEventError, InternalServerError, UserNotFoundError } from '../schemas/global.js';
 import { InfoLvl, logger, Logger } from '../utils/logging.js';
 import { err, ok, tryCatch } from '../utils/result.js';
 
 import { User } from '@clerk/fastify';
 import { whatsappService } from './whatsapp.js';
-
-class InconsistentEventError extends Error {
-  readonly _tag = 'InconsistentEvent'
-  message: string
-
-  constructor(message: string) {
-    super();
-    this.message = message;
-  }
-}
 
 class ClerkError extends Error {
   readonly _tag = 'Clerk'
