@@ -99,6 +99,7 @@ const processUnofficialWebhook = async (req: TypedRequest<{ body: UnofficialWebh
   if (!session.value) {
     session = await tryCatch(db.session.create({
       data: {
+        kind: 'transaction',
         userId: user.value.id,
         expiresAt: new Date(now.valueOf() + 1000 * config.WHATSAPP_SESSION_EXPIRY_SECS),
         status: 'created',
