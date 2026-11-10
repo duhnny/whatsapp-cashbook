@@ -54,9 +54,16 @@ class EventsHandlerService {
 
     this.running = true;
 
+    // get events
+    const now = new Date();
+
     const events = await tryCatch(db.event.findMany({
       where: {
         done: false,
+        OR: [
+          { expiresAt: { gte: now } },
+          { expiresAt: null },
+        ]
       },
     }));
 
