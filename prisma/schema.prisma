@@ -117,6 +117,7 @@ model OutboxTransaction {
 
 enum EventName {
   users_creation
+  whatsapp_confirmation_requested
 }
 
 model Event {
