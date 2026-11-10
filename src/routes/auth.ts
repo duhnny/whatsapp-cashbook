@@ -1,13 +1,13 @@
 import { FastifyPluginAsync } from "fastify";
-import { db } from "../config/config.js";
+import { config, db } from "../config/config.js";
 import { validatedRoute } from "../middleware/validation.js";
 import { SignupRequestBody, SignupRequestBodySchema } from "../schemas/auth.js";
 import { AuthedRequest, InternalServerError, TypedRequest } from "../schemas/global.js";
 import { InfoLvl, logger } from "../utils/logging.js";
 import { err, ok, tryCatch } from "../utils/result.js";
 import { eventsHandlerService } from "../services/events.js";
-import { whatsappService } from "../services/whatsapp.js";
 import { quickHash } from "../utils/strings.js";
+import { authenticatedRoute } from "../middleware/auth.js";
 
 export class UserAlreadyExistsError extends Error {
   readonly _tag = 'UserAlreadyExists'
@@ -163,7 +163,7 @@ const requestWhatsappVerification = async (req: AuthedRequest) => {
 
     return ok({
       alreadyVerified: true,
-      message: 'Verification message sent' as const,
+      message: 'User has already verified whatsapp' as const,
     });
   }
 
@@ -177,10 +177,53 @@ const requestWhatsappVerification = async (req: AuthedRequest) => {
     return err(new ServerProcessingUserCreationError('The server is still processing the user creation. Please wait a few seconds and try again'));
   }
 
-  logger.log(InfoLvl.Trace, 'Sending whatsapp confirmation message');
+  logger.log(InfoLvl.Trace, 'Creating whatsapp session for whatsapp confirmation', {
+    reqId: req.id,
+    userId: req.user.id,
+  });
 
-  whatsappService.sendText()
+  const transactionResult = await tryCatch(db.$transaction(async tx => {
+    const expiration = new Date(Date.now() + config.WHATSAPP_SESSION_EXPIRY_SECS * 1000);
+
+    const event = await tx.event.create({
+      data: {
+        name: 'whatsapp_confirmation_requested',
+        userId: req.user.id,
+
+        idempotencyKey: quickHash(),
+        expiresAt: expiration,
+      },
+    });
+
+    const session = await tx.session.create({
+      data: {
+        userId: req.user.id,
+        kind: 'whatsapp_confirmation',
+        status: 'created',
+        expiresAt: expiration,
+      },
+    });
+
+    return { event, session };
+  }));
+
+  if (transactionResult._tag === 'err') {
+    logger.log(InfoLvl.Error, 'Unable to create whatsapp confirmation event', {
+      reqId: req.id,
+      userId: req.user.id,
+      error: transactionResult.error,
+    });
+
+    return err(new InternalServerError('Unable to send whatsapp verification. Please try again later'));
+  }
+
+  return ok({
+    alreadyVerified: true,
+    message: 'Verification message sent' as const,
+  });
 }
+
+const requestWhatsappVerificationRoute = authenticatedRoute(requestWhatsappVerification);
 
 export const authRoutes: FastifyPluginAsync = async (app, opts) => {
   app.post('/signup', async (req, res) => {
@@ -193,6 +236,24 @@ export const authRoutes: FastifyPluginAsync = async (app, opts) => {
           return res.code(400).send(response);
         case 'InternalServerError':
           return res.code(500).send(response);
+      }
+    }
+
+    return res.code(200).send(ok(response.value));
+  });
+
+  app.post('/whatsapp-verification', async (req, res) => {
+    const response = await requestWhatsappVerificationRoute(req);
+
+    if (response._tag === 'err') {
+      switch (response.error._tag) {
+        case 'Unauthenticated':
+        case 'MalformedJWT':
+          return res.code(401).send(response);
+        case 'InternalServerError':
+          return res.code(500).send(response);
+        case 'ServerProcessingUserCreation':
+          return res.code(503).send(response);
       }
     }
 
