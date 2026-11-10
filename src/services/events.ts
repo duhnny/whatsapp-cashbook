@@ -270,12 +270,22 @@ class EventsHandlerService {
       if (processingStage === 0) {
         // event just created: we need to send a whatsapp message
         if (event.userId === null) {
-          this.logger.log(InfoLvl.Error, `${EventName.users_creation} event does not have user attatched`, {
+          this.logger.log(InfoLvl.Error, `${EventName.whatsapp_confirmation_requested} event does not have user attatched`, {
             id: event.id,
           });
 
-          return err(new InconsistentEventError(`${EventName.users_creation} event does not have user attatched`));
+          return err(new InconsistentEventError(`${EventName.whatsapp_confirmation_requested} event does not have user attatched`));
         }
+
+        if (event.sessionId === null) {
+          this.logger.log(InfoLvl.Error, `${EventName.whatsapp_confirmation_requested} event does not have session attatched`, {
+            id: event.id,
+          });
+
+          return err(new InconsistentEventError(`${EventName.whatsapp_confirmation_requested} event does not have session attatched`));
+        }
+
+        // get the user
 
         const user = await tryCatch(db.user.findUnique({
           where: {
@@ -317,20 +327,35 @@ class EventsHandlerService {
           return whatsappResponse;
         }
 
-        const newWhatsappConfirmationEvent = await tryCatch(db.event.update({
-          where: {
-            id: event.id,
-          },
-          data: {
-            processingStage: 1,
-          },
+        const transactionResult = await tryCatch(db.$transaction(async tx => {
+          const newWhatsappConfirmationEvent = await tx.event.update({
+            where: {
+              id: event.id,
+            },
+            data: {
+              processingStage: 1,
+            },
+          });
+
+          const newWhatsappSession = await tx.session.update({
+            where: {
+              id: event.sessionId!,
+            },
+            data: {
+              status: 'pending_confirmation',
+            },
+          });
+
+          return { newWhatsappConfirmationEvent, newWhatsappSession };
         }));
 
-        if (newWhatsappConfirmationEvent._tag === 'err') {
-          logger.log(InfoLvl.Warning, 'Unable to update whatsapp confirmation event after sending message', {
+        if (transactionResult._tag === 'err') {
+          logger.log(InfoLvl.Warning, 'Unable to update whatsapp confirmation event or whatsapp confirmation session after sending message', {
             eventId: event.id,
+            sessionId: event.sessionId,
             processingStage: 1,
             done: false,
+            error: transactionResult.error,
           });
 
           return err(new UnableToUpdateEventError({
