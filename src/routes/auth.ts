@@ -185,21 +185,23 @@ const requestWhatsappVerification = async (req: AuthedRequest) => {
   const transactionResult = await tryCatch(db.$transaction(async tx => {
     const expiration = new Date(Date.now() + config.WHATSAPP_SESSION_EXPIRY_SECS * 1000);
 
-    const event = await tx.event.create({
-      data: {
-        name: 'whatsapp_confirmation_requested',
-        userId: req.user.id,
-
-        idempotencyKey: quickHash(),
-        expiresAt: expiration,
-      },
-    });
-
     const session = await tx.session.create({
       data: {
         userId: req.user.id,
         kind: 'whatsapp_confirmation',
         status: 'created',
+        expiresAt: expiration,
+      },
+    });
+
+    const event = await tx.event.create({
+      data: {
+        name: 'whatsapp_confirmation_requested',
+
+        userId: req.user.id,
+        sessionId: session.id,
+
+        idempotencyKey: quickHash(),
         expiresAt: expiration,
       },
     });
