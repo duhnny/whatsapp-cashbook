@@ -71,6 +71,7 @@ model Session {
 
   // opposite relations
   outboxTransactions OutboxTransaction[] @relation("session")
+  events             Event[]             @relation("session")
 }
 
 enum TransactionCategory {
@@ -130,6 +131,9 @@ model Event {
 
   processingStage Int        @default(0)
   done            Boolean    @default(false)
+
+  sessionId       Int?
+  session         Session?   @relation("session", fields: [sessionId], references: [id])
 
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
