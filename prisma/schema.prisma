@@ -29,6 +29,7 @@ model User {
   active                Boolean        @default(true)
 
   whatsappAnonId        BigInt?
+  whatsappVerified      Boolean        @default(false)
 
   createdAt             DateTime       @default(now())
   createdById           Int?
