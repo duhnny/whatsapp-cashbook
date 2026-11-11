@@ -317,11 +317,12 @@ class EventsHandlerService {
         }
 
         // send whatsapp message
-        const whatsappResponse = await whatsappService.sendText(
-          user.value,
-          `Verificação por WhatsApp: Se você é ${user.value.name} e registrou recentemente nos`
-          + `nossos serviços, por favor digite 'SIM' para confirmar. Caso contrário, responda com 'NÃO'.`
-        );
+        const whatsappResponse = await whatsappService.sendText({
+          user: user.value,
+          text: `Verificação por WhatsApp: Se você é ${user.value.name} e registrou recentemente nos`
+            + `nossos serviços, por favor digite 'SIM' para confirmar. Caso contrário, responda com 'NÃO'.`,
+          idempotencyKey: event.idempotencyKey + '_' + event.processingStage,
+        });
 
         if (whatsappResponse._tag === 'err') {
           logger.log(InfoLvl.Warning, 'Unable to send whatsapp verification message', {

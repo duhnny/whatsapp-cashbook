@@ -23,6 +23,17 @@ class WhatsappApiError extends Error {
   }
 }
 
+interface WhatsappUser {
+  phone?: User['phone'],
+  whatsappAnonId?: User['whatsappAnonId'],
+}
+
+interface SendTextParams<T extends WhatsappUser> {
+  user: T,
+  text: string,
+  idempotencyKey?: string,
+}
+
 class WhatsappService {
   baseUrl: string
   sessionId: string
@@ -37,10 +48,7 @@ class WhatsappService {
   }
 
   // TODO: add idempotency key
-  public async sendText<T extends {
-    phone?: User['phone'],
-    whatsappAnonId?: User['whatsappAnonId'],
-  }>(user: T, text: string) {
+  public async sendText<T extends WhatsappUser>({ user, text, idempotencyKey }: SendTextParams<T>) {
     if (user.phone === undefined && user.whatsappAnonId === undefined) {
       logger.log(InfoLvl.Warning, 'whatsappService.sendText was called with user without whatsapp identification', {
         user,
@@ -51,12 +59,18 @@ class WhatsappService {
 
     const url = `${this.baseUrl}/sessions/${this.sessionId}/messages/send-text`;
 
+    const headers = new Headers({
+      'X-API-Key': config.OPENWA_API_KEY,
+      'Content-Type': 'application/json',
+    });
+
+    if (idempotencyKey) {
+      headers.append('Idempotency-Key', idempotencyKey);
+    }
+
     const response = await tryCatch(fetch(url, {
       method: 'POST',
-      headers: {
-        'X-API-Key': config.OPENWA_API_KEY,
-        'Content-Type': 'application/json',
-      },
+      headers: headers,
       body: JSON.stringify({
         chatId: user.whatsappAnonId ? `${user.whatsappAnonId}@lid` : `${user.phone}@c.us`,
         text,

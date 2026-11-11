@@ -155,10 +155,10 @@ const processUnofficialWebhook = async (req: TypedRequest<{ body: UnofficialWebh
           }
 
           if (transactionsInOutbox.value.length === 0) {
-            const whatsappResponse = await whatsappService.sendText(
+            const whatsappResponse = await whatsappService.sendText({
               user,
-              'Não foi possível identificar transações: ' + aiResponse.value.message,
-            );
+              text: 'Não foi possível identificar transações: ' + aiResponse.value.message,
+            });
 
             if (whatsappResponse._tag === 'err') {
               logger.log(InfoLvl.Error, 'Unable to send message to user about no transactions found', {
@@ -176,16 +176,16 @@ const processUnofficialWebhook = async (req: TypedRequest<{ body: UnofficialWebh
 
           // if we get here, then the transactions are ok
           // then we send the user a message to confirm the transactions
-          const whatsappResponse = await whatsappService.sendText(
+          const whatsappResponse = await whatsappService.sendText({
             user,
-            'Confirme as transaçõoes:' + '\n\n'
-            + transactionsInOutbox.value.map(transaction => {
-              return 'Transação: ' + transaction.description + '\n'
-                + 'Categoria: ' + transaction.category + '\n'
-                + 'Valor: R$' + transaction.amount + '\n'
-            }) + '\n'
-            + 'Responda com \'SIM\' ou \'NÃO\'',
-          );
+            text: 'Confirme as transaçõoes:' + '\n\n'
+              + transactionsInOutbox.value.map(transaction => {
+                return 'Transação: ' + transaction.description + '\n'
+                  + 'Categoria: ' + transaction.category + '\n'
+                  + 'Valor: R$' + transaction.amount + '\n'
+              }) + '\n'
+              + 'Responda com \'SIM\' ou \'NÃO\'',
+          });
 
           if (whatsappResponse._tag === 'err') {
             logger.log(InfoLvl.Error, 'Unable to send message to user to confirm transactions', {
@@ -305,7 +305,7 @@ const processUnofficialWebhook = async (req: TypedRequest<{ body: UnofficialWebh
                 return;
               }
 
-              const whatsappConfirmationResponse = await whatsappService.sendText(user, 'Transações confirmadas com sucesso!');
+              const whatsappConfirmationResponse = await whatsappService.sendText({ user, text: 'Transações confirmadas com sucesso!' });
 
               if (whatsappConfirmationResponse._tag === 'err') {
                 logger.log(InfoLvl.Error, 'Unable to send message to user saying that the transactions were confirmed', {
@@ -354,7 +354,7 @@ const processUnofficialWebhook = async (req: TypedRequest<{ body: UnofficialWebh
                 return;
               }
 
-              const whatsappCancelationResponse = await whatsappService.sendText(user, 'Transações canceladas com sucesso!');
+              const whatsappCancelationResponse = await whatsappService.sendText({ user, text: 'Transações canceladas com sucesso!' });
 
               if (whatsappCancelationResponse._tag === 'err') {
                 logger.log(InfoLvl.Error, 'Unable to send message to user saying that the transactions were cancelled', {
@@ -370,7 +370,7 @@ const processUnofficialWebhook = async (req: TypedRequest<{ body: UnofficialWebh
               return;
 
             default:
-              const whatsappNotFoundResponse = await whatsappService.sendText(user, 'Por favor, responda com \'SIM\' ou \'NÃO\'');
+              const whatsappNotFoundResponse = await whatsappService.sendText({ user, text: 'Por favor, responda com \'SIM\' ou \'NÃO\'' });
 
               if (whatsappNotFoundResponse._tag === 'err') {
                 logger.log(InfoLvl.Error, 'Unable to send message to user saying that the option was not found', {
@@ -569,7 +569,7 @@ const processUnofficialWebhook = async (req: TypedRequest<{ body: UnofficialWebh
           }
 
           default: {
-            const whatsappNotFoundResponse = await whatsappService.sendText(user.value!, 'Por favor, responda com \'SIM\' ou \'NÃO\'');
+            const whatsappNotFoundResponse = await whatsappService.sendText({ user: user.value!, text: 'Por favor, responda com \'SIM\' ou \'NÃO\'' });
 
             if (whatsappNotFoundResponse._tag === 'err') {
               logger.log(InfoLvl.Error, 'Unable to send message to user saying that the option was not found', {
