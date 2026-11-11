@@ -1,12 +1,13 @@
-import { Session, User } from "../../prisma/client/client.js";
+import { EventName, Session, SessionKind, User } from "../../prisma/client/client.js";
 import { config, db } from "../config/config.js";
 import { validatedRoute } from "../middleware/validation.js";
-import { BasicRequest, TypedRequest } from "../schemas/global.js";
+import { BasicRequest, InconsistentEventError, InternalServerError, TypedRequest } from "../schemas/global.js";
 import { UnofficialWebhookBody, UnofficialWebhookBodySchema } from "../schemas/webhook.js";
 import { aiService } from "../services/ai.js";
+import { EventProcessingStates } from "../services/events.js";
 import { whatsappService } from "../services/whatsapp.js";
 import { InfoLvl, logger } from "../utils/logging.js";
-import { ok, tryCatch } from "../utils/result.js";
+import { err, ok, tryCatch } from "../utils/result.js";
 import { AsyncReturn } from "../utils/types.js";
 
 import { FastifyPluginAsync } from "fastify";
@@ -120,46 +121,74 @@ const processUnofficialWebhook = async (req: TypedRequest<{ body: UnofficialWebh
   }
 
   // run asyncronously to avoid having a hanging provider
-  switch (session.value!.status) {
-    case 'created':
-      (async (reqId: BasicRequest['id'], user: User, session: Session, text: string) => {
-        const aiResponse = await aiService.createOutboxTransaction(user.id, session.id, text);
+  if (session.value!.kind === 'transaction') {
+    switch (session.value!.status) {
+      case 'created':
+        (async (reqId: BasicRequest['id'], user: User, session: Session, text: string) => {
+          const aiResponse = await aiService.createOutboxTransaction(user.id, session.id, text);
 
-        if (aiResponse._tag === 'err') {
-          logger.log(InfoLvl.Error, 'Unable to invoke agent to create transaction', {
-            reqId,
-            text,
-            userId: user.id,
-            sessionId: session.id,
-            error: aiResponse.error,
-          });
+          if (aiResponse._tag === 'err') {
+            logger.log(InfoLvl.Error, 'Unable to invoke agent to create transaction', {
+              reqId,
+              text,
+              userId: user.id,
+              sessionId: session.id,
+              error: aiResponse.error,
+            });
 
-          return;
-        }
+            return;
+          }
 
-        const transactionsInOutbox = await tryCatch(db.outboxTransaction.findMany({
-          where: {
-            sessionId: session.id,
-          },
-        }));
+          const transactionsInOutbox = await tryCatch(db.outboxTransaction.findMany({
+            where: {
+              sessionId: session.id,
+            },
+          }));
 
-        if (transactionsInOutbox._tag === 'err') {
-          logger.log(InfoLvl.Error, 'Unable to get transactions in the outbox', {
-            sessionId: session.id,
-            error: transactionsInOutbox.error,
-          });
+          if (transactionsInOutbox._tag === 'err') {
+            logger.log(InfoLvl.Error, 'Unable to get transactions in the outbox', {
+              sessionId: session.id,
+              error: transactionsInOutbox.error,
+            });
 
-          return;
-        }
+            return;
+          }
 
-        if (transactionsInOutbox.value.length === 0) {
+          if (transactionsInOutbox.value.length === 0) {
+            const whatsappResponse = await whatsappService.sendText(
+              user,
+              'Não foi possível identificar transações: ' + aiResponse.value.message,
+            );
+
+            if (whatsappResponse._tag === 'err') {
+              logger.log(InfoLvl.Error, 'Unable to send message to user about no transactions found', {
+                reqId,
+                userId: user.id,
+                sessionId: session.id,
+                error: whatsappResponse.error,
+              });
+
+              return;
+            }
+
+            return;
+          }
+
+          // if we get here, then the transactions are ok
+          // then we send the user a message to confirm the transactions
           const whatsappResponse = await whatsappService.sendText(
             user,
-            'Não foi possível identificar transações: ' + aiResponse.value.message,
+            'Confirme as transaçõoes:' + '\n\n'
+            + transactionsInOutbox.value.map(transaction => {
+              return 'Transação: ' + transaction.description + '\n'
+                + 'Categoria: ' + transaction.category + '\n'
+                + 'Valor: R$' + transaction.amount + '\n'
+            }) + '\n'
+            + 'Responda com \'SIM\' ou \'NÃO\'',
           );
 
           if (whatsappResponse._tag === 'err') {
-            logger.log(InfoLvl.Error, 'Unable to send message to user about no transactions found', {
+            logger.log(InfoLvl.Error, 'Unable to send message to user to confirm transactions', {
               reqId,
               userId: user.id,
               sessionId: session.id,
@@ -169,238 +198,423 @@ const processUnofficialWebhook = async (req: TypedRequest<{ body: UnofficialWebh
             return;
           }
 
-          return;
-        }
-
-        // if we get here, then the transactions are ok
-        // then we send the user a message to confirm the transactions
-        const whatsappResponse = await whatsappService.sendText(
-          user,
-          'Confirme as transaçõoes:' + '\n\n'
-          + transactionsInOutbox.value.map(transaction => {
-            return 'Transação: ' + transaction.description + '\n'
-              + 'Categoria: ' + transaction.category + '\n'
-              + 'Valor: R$' + transaction.amount + '\n'
-          }) + '\n'
-          + 'Responda com \'SIM\' ou \'NÃO\'',
-        );
-
-        if (whatsappResponse._tag === 'err') {
-          logger.log(InfoLvl.Error, 'Unable to send message to user to confirm transactions', {
+          logger.log(InfoLvl.Trace, 'Sent confirmation message about transactions in session', {
             reqId,
             userId: user.id,
             sessionId: session.id,
-            error: whatsappResponse.error,
           });
 
-          return;
-        }
+          const updatedSession = await tryCatch(db.session.update({
+            where: {
+              id: session.id,
+            },
+            data: {
+              status: 'pending_confirmation',
+            },
+          }));
 
-        logger.log(InfoLvl.Trace, 'Sent confirmation message about transactions in session', {
-          reqId,
-          userId: user.id,
-          sessionId: session.id,
-        });
+          if (updatedSession._tag === 'err') {
+            logger.log(InfoLvl.Error, 'Unable to update session status to pending_confirmation after confirmation message has been sent', {
+              reqId,
+              userId: user.id,
+              sessionId: session.id,
+              error: updatedSession.error,
+            });
 
-        const updatedSession = await tryCatch(db.session.update({
-          where: {
-            id: session.id,
-          },
-          data: {
-            status: 'pending_confirmation',
-          },
-        }));
+            return;
+          }
 
-        if (updatedSession._tag === 'err') {
-          logger.log(InfoLvl.Error, 'Unable to update session status to pending_confirmation after confirmation message has been sent', {
+          logger.log(InfoLvl.Trace, 'Updated session status to pending_confirmation after sending confirmation message', {
             reqId,
-            userId: user.id,
             sessionId: session.id,
-            error: updatedSession.error,
           });
-
           return;
-        }
+        })(req.id, user.value, session.value!, req.body.data.body);
 
-        logger.log(InfoLvl.Trace, 'Updated session status to pending_confirmation after sending confirmation message', {
-          reqId,
-          sessionId: session.id,
+        return ok({
+          success: true,
+          message: 'Invoked agent' as const,
         });
-        return;
-      })(req.id, user.value, session.value!, req.body.data.body);
 
-      return ok({
-        success: true,
-        message: 'Invoked agent' as const,
-      });
-
-    case 'pending_confirmation':
-      (async (reqId: BasicRequest['id'], user: User, session: Session, text: string) => {
-        switch (text.toLowerCase()) {
-          case 'sim':
-            const toBeConfirmedTransactions = await tryCatch(db.outboxTransaction.findMany({
-              where: {
-                sessionId: session.id,
-              },
-            }));
-
-            if (toBeConfirmedTransactions._tag === 'err') {
-              logger.log(InfoLvl.Error, 'Unable to get outbox transactions for confirmation', {
-                reqId,
-                userId: user.id,
-                sessionId: session.id,
-                error: toBeConfirmedTransactions.error,
-              });
-
-              return;
-            }
-
-            const transactionsConfirmationResult = await tryCatch(db.$transaction(async (tx) => {
-              const createTransactionsResult = await tx.transaction.createMany({
-                data: toBeConfirmedTransactions.value.map(transaction => {
-                  return {
-                    userId: user.id,
-                    amount: transaction.amount,
-                    category: transaction.category,
-                    description: transaction.description,
-                    createdAt: transaction.createdAt,
-                    updatedAt: transaction.createdAt,
-                    updatedById: user.id,
-                  };
-                }),
-              });
-
-              const cleanOutboxResult = await tx.outboxTransaction.deleteMany({
+      case 'pending_confirmation':
+        (async (reqId: BasicRequest['id'], user: User, session: Session, text: string) => {
+          switch (text.toLowerCase()) {
+            case 'sim':
+              const toBeConfirmedTransactions = await tryCatch(db.outboxTransaction.findMany({
                 where: {
                   sessionId: session.id,
                 },
-              });
+              }));
 
-              const updatedSession = await tx.session.update({
+              if (toBeConfirmedTransactions._tag === 'err') {
+                logger.log(InfoLvl.Error, 'Unable to get outbox transactions for confirmation', {
+                  reqId,
+                  userId: user.id,
+                  sessionId: session.id,
+                  error: toBeConfirmedTransactions.error,
+                });
+
+                return;
+              }
+
+              const transactionsConfirmationResult = await tryCatch(db.$transaction(async (tx) => {
+                const createTransactionsResult = await tx.transaction.createMany({
+                  data: toBeConfirmedTransactions.value.map(transaction => {
+                    return {
+                      userId: user.id,
+                      amount: transaction.amount,
+                      category: transaction.category,
+                      description: transaction.description,
+                      createdAt: transaction.createdAt,
+                      updatedAt: transaction.createdAt,
+                      updatedById: user.id,
+                    };
+                  }),
+                });
+
+                const cleanOutboxResult = await tx.outboxTransaction.deleteMany({
+                  where: {
+                    sessionId: session.id,
+                  },
+                });
+
+                const updatedSession = await tx.session.update({
+                  where: {
+                    id: session.id,
+                  },
+                  data: {
+                    status: 'concluded',
+                  },
+                });
+
+                return {
+                  createTransactionsResult,
+                  cleanOutboxResult,
+                  updatedSession,
+                };
+              }));
+
+              if (transactionsConfirmationResult._tag === 'err') {
+                logger.log(InfoLvl.Error, 'Unable to confirm transactions', {
+                  reqId,
+                  userId: user.id,
+                  sessionId: session.id,
+                  error: transactionsConfirmationResult.error,
+                });
+
+                return;
+              }
+
+              const whatsappConfirmationResponse = await whatsappService.sendText(user, 'Transações confirmadas com sucesso!');
+
+              if (whatsappConfirmationResponse._tag === 'err') {
+                logger.log(InfoLvl.Error, 'Unable to send message to user saying that the transactions were confirmed', {
+                  reqId,
+                  userId: user.id,
+                  sessionId: session.id,
+                  error: whatsappConfirmationResponse.error,
+                });
+
+                return;
+              }
+
+              return;
+
+            case 'não':
+              const transactionsCancelationResult = await tryCatch(db.$transaction(async (tx) => {
+                const cleanOutboxResult = await tx.outboxTransaction.deleteMany({
+                  where: {
+                    sessionId: session.id,
+                  },
+                });
+
+                const updatedSession = await tx.session.update({
+                  where: {
+                    id: session.id,
+                  },
+                  data: {
+                    status: 'concluded',
+                  },
+                });
+
+                return {
+                  cleanOutboxResult,
+                  updatedSession,
+                };
+              }));
+
+              if (transactionsCancelationResult._tag === 'err') {
+                logger.log(InfoLvl.Error, 'Unable to confirm transactions', {
+                  reqId,
+                  userId: user.id,
+                  sessionId: session.id,
+                  error: transactionsCancelationResult.error,
+                });
+
+                return;
+              }
+
+              const whatsappCancelationResponse = await whatsappService.sendText(user, 'Transações canceladas com sucesso!');
+
+              if (whatsappCancelationResponse._tag === 'err') {
+                logger.log(InfoLvl.Error, 'Unable to send message to user saying that the transactions were cancelled', {
+                  reqId,
+                  userId: user.id,
+                  sessionId: session.id,
+                  error: whatsappCancelationResponse.error,
+                });
+
+                return;
+              }
+
+              return;
+
+            default:
+              const whatsappNotFoundResponse = await whatsappService.sendText(user, 'Por favor, responda com \'SIM\' ou \'NÃO\'');
+
+              if (whatsappNotFoundResponse._tag === 'err') {
+                logger.log(InfoLvl.Error, 'Unable to send message to user saying that the option was not found', {
+                  reqId,
+                  userId: user.id,
+                  sessionId: session.id,
+                  error: whatsappNotFoundResponse.error,
+                });
+
+                return;
+              }
+
+              return;
+          }
+        })(req.id, user.value, session.value!, req.body.data.body);
+
+        return ok({
+          success: true,
+          message: 'Recieved confirmation' as const,
+        });
+
+      default:
+        logger.log(InfoLvl.Fatal, 'Inconsistent application state: session.status should be either created or pending_confirmation', {
+          sessionId: session.value!.id,
+          status: session.value!.status,
+        });
+
+        return ok({
+          success: false,
+          message: 'Inconsistent application state' as const,
+        });
+    }
+  } else if (session.value!.kind === 'whatsapp_confirmation') {
+    // here we will not run asyncronously because if the confirmation fails
+    // it should be tried again
+    switch (session.value!.status) {
+      case 'created': {
+        // do nothing
+        return ok({
+          success: true,
+          message: 'Verification message was still not sent' as const,
+        });
+      }
+
+      case 'pending_confirmation': {
+        switch (req.body.data.body.toLowerCase()) {
+          case 'sim': {
+            const transactionResult = await tryCatch(db.$transaction(async tx => {
+              // TODO: here we assume there is only one user creation event per user.
+              // this should be enforced via database check
+              const userCreationEvents = await tx.event.updateManyAndReturn({
                 where: {
-                  id: session.id,
+                  name: 'users_creation',
+                  userId: user.value!.id,
                 },
                 data: {
-                  status: 'concluded',
+                  processingState: EventProcessingStates.users_creation.whatsapp_verification_passed,
+                  done: true,
+                },
+              });
+
+              if (userCreationEvents.length === 0) {
+                throw err(new InconsistentEventError(`User with id <${user.value!.id}> should have a ${EventName.users_creation} event`));
+              } else if (userCreationEvents.length > 1) {
+                throw err(new InconsistentEventError(`User with id <${user.value!.id}> has more than one ${EventName.users_creation} event`));
+              }
+
+              const whatsappConfirmationEvents = await tx.event.updateManyAndReturn({
+                where: {
+                  name: 'whatsapp_confirmation_requested',
+                  userId: user.value!.id,
+                  sessionId: session.value!.id,
+                },
+                data: {
+                  processingState: EventProcessingStates.whatsapp_confirmation_requested.completed,
+                  done: true,
+                },
+              });
+
+              if (whatsappConfirmationEvents.length === 0) {
+                throw err(new InconsistentEventError(`There should be a ${EventName.whatsapp_confirmation_requested} event associated with session with id <${session.value!.id}>`));
+              } else if (whatsappConfirmationEvents.length > 1) {
+                throw err(new InconsistentEventError(`There should not be more than one ${EventName.whatsapp_confirmation_requested} event associated with session with id <${session.value!.id}>`));
+              }
+
+              const newSession = await tx.session.update({
+                where: {
+                  id: session.value!.id,
+                },
+                data: {
+                  status: 'concluded'
+                },
+              });
+
+              // TODO: we will need to grab whatsapp anon when sending the message
+              const newUser = await tx.user.update({
+                where: {
+                  id: user.value!.id,
+                },
+                data: {
+                  whatsappVerified: true,
                 },
               });
 
               return {
-                createTransactionsResult,
-                cleanOutboxResult,
-                updatedSession,
+                newSession,
+                newUser,
+                whatsappEvent: whatsappConfirmationEvents[0]!,
+                userCreationEvent: userCreationEvents[0]!,
               };
             }));
 
-            if (transactionsConfirmationResult._tag === 'err') {
-              logger.log(InfoLvl.Error, 'Unable to confirm transactions', {
-                reqId,
-                userId: user.id,
-                sessionId: session.id,
-                error: transactionsConfirmationResult.error,
+            if (transactionResult._tag === 'err') {
+              logger.log(InfoLvl.Error, 'Unable to confirm whatsapp', {
+                userId: session.value!.userId,
+                sessionId: session.value!.id,
+                error: transactionResult.error,
               });
 
-              return;
+              return err(new InternalServerError('Unable to confirm user whatsapp'));
             }
 
-            const whatsappConfirmationResponse = await whatsappService.sendText(user, 'Transações confirmadas com sucesso!');
+            return ok({
+              success: true,
+              message: 'WhatsApp verified' as const,
+            });
+          }
 
-            if (whatsappConfirmationResponse._tag === 'err') {
-              logger.log(InfoLvl.Error, 'Unable to send message to user saying that the transactions were confirmed', {
-                reqId,
-                userId: user.id,
-                sessionId: session.id,
-                error: whatsappConfirmationResponse.error,
-              });
-
-              return;
-            }
-
-            return;
-
-          case 'não':
-            const transactionsCancelationResult = await tryCatch(db.$transaction(async (tx) => {
-              const cleanOutboxResult = await tx.outboxTransaction.deleteMany({
+          case 'não': {
+            const transactionResult = await tryCatch(db.$transaction(async tx => {
+              const userCreationEvents = await tx.event.updateManyAndReturn({
                 where: {
-                  sessionId: session.id,
-                },
-              });
-
-              const updatedSession = await tx.session.update({
-                where: {
-                  id: session.id,
+                  name: 'users_creation',
+                  userId: user.value!.id,
                 },
                 data: {
-                  status: 'concluded',
+                  processingState: EventProcessingStates.users_creation.whatsapp_verification_failed,
                 },
               });
 
+              if (userCreationEvents.length === 0) {
+                throw err(new InconsistentEventError(`User with id <${user.value!.id}> should have a ${EventName.users_creation} event`));
+              } else if (userCreationEvents.length > 1) {
+                throw err(new InconsistentEventError(`User with id <${user.value!.id}> has more than one ${EventName.users_creation} event`));
+              }
+
+              const whatsappConfirmationEvents = await tx.event.updateManyAndReturn({
+                where: {
+                  name: 'whatsapp_confirmation_requested',
+                  userId: user.value!.id,
+                  sessionId: session.value!.id,
+                },
+                data: {
+                  processingState: EventProcessingStates.whatsapp_confirmation_requested.failed,
+                  done: true,
+                },
+              });
+
+              if (whatsappConfirmationEvents.length === 0) {
+                throw err(new InconsistentEventError(`There should be a ${EventName.whatsapp_confirmation_requested} event associated with session with id <${session.value!.id}>`));
+              } else if (whatsappConfirmationEvents.length > 1) {
+                throw err(new InconsistentEventError(`There should not be more than one ${EventName.whatsapp_confirmation_requested} event associated with session with id <${session.value!.id}>`));
+              }
+
+              const newSession = await tx.session.update({
+                where: {
+                  id: session.value!.id,
+                },
+                data: {
+                  status: 'concluded'
+                },
+              });
+
+              // no need to update user, since whatsapp verification failed
               return {
-                cleanOutboxResult,
-                updatedSession,
+                newSession,
+                whatsappEvent: whatsappConfirmationEvents[0]!,
+                userCreationEvent: userCreationEvents[0]!,
               };
             }));
 
-            if (transactionsCancelationResult._tag === 'err') {
-              logger.log(InfoLvl.Error, 'Unable to confirm transactions', {
-                reqId,
-                userId: user.id,
-                sessionId: session.id,
-                error: transactionsCancelationResult.error,
+            if (transactionResult._tag === 'err') {
+              logger.log(InfoLvl.Error, 'Unable to cancel whatsapp confirmation attempt', {
+                userId: session.value!.userId,
+                sessionId: session.value!.id,
+                error: transactionResult.error,
               });
 
-              return;
+              return err(new InternalServerError('Unable to cancel whatsapp confirmation'));
             }
 
-            const whatsappCancelationResponse = await whatsappService.sendText(user, 'Transações canceladas com sucesso!');
+            return ok({
+              success: true,
+              message: 'WhatsApp verification cancelled' as const,
+            });
+          }
 
-            if (whatsappCancelationResponse._tag === 'err') {
-              logger.log(InfoLvl.Error, 'Unable to send message to user saying that the transactions were cancelled', {
-                reqId,
-                userId: user.id,
-                sessionId: session.id,
-                error: whatsappCancelationResponse.error,
-              });
-
-              return;
-            }
-
-            return;
-
-          default:
-            const whatsappNotFoundResponse = await whatsappService.sendText(user, 'Por favor, responda com \'SIM\' ou \'NÃO\'');
+          default: {
+            const whatsappNotFoundResponse = await whatsappService.sendText(user.value!, 'Por favor, responda com \'SIM\' ou \'NÃO\'');
 
             if (whatsappNotFoundResponse._tag === 'err') {
               logger.log(InfoLvl.Error, 'Unable to send message to user saying that the option was not found', {
-                reqId,
-                userId: user.id,
-                sessionId: session.id,
+                reqId: req.id,
+                userId: user.value.id,
+                sessionId: session.value!.id,
                 error: whatsappNotFoundResponse.error,
               });
 
-              return;
+              return err(new InternalServerError('Unable to send message to user saying that the option was not found'));
             }
 
-            return;
+            return ok({
+              sucess: true,
+              message: 'WhatsApp verification continues' as const,
+            });
+          }
         }
-      })(req.id, user.value, session.value!, req.body.data.body);
+      }
 
-      return ok({
-        success: true,
-        message: 'Recieved confirmation' as const,
-      });
+      default: {
+        logger.log(InfoLvl.Fatal, 'Inconsistent application state: session.status should be either created or pending_confirmation', {
+          sessionId: session.value!.id,
+          status: session.value!.status,
+        });
 
-    default:
-      logger.log(InfoLvl.Fatal, 'Inconsistent application state: session.status should be either created or pending_confirmation', {
-        sessionId: session.value!.id,
-        status: session.value!.status,
-      });
-
-      return ok({
-        success: false,
-        message: 'Inconsistent application state' as const,
-      });
+        return ok({
+          success: false,
+          message: 'Inconsistent application state' as const,
+        });
+      }
+    }
   }
+
+  // if we get here, the state of the application is compromised
+  logger.log(InfoLvl.Fatal, `Inconsistent application state: session.kind should be either ${SessionKind.whatsapp_confirmation} or ${SessionKind.transaction}`, {
+    sessionId: session.value!.id,
+    kind: session.value!.kind,
+  });
+
+  // we return ok to avoid retries by the whatsapp provider
+  return ok({
+    success: false,
+    message: 'Inconsistent application state' as const,
+  });
 };
 
 const processUnofficialWebhookRoute = validatedRoute({ body: UnofficialWebhookBodySchema }, processUnofficialWebhook);
@@ -415,6 +629,8 @@ export const webhookRoutes: FastifyPluginAsync = async (app, opts) => {
       switch (response.error._tag) {
         case 'ValidationError':
           return res.code(400).send(response);
+        case 'InternalServerError':
+          return res.code(500).send(response);
       }
     }
 

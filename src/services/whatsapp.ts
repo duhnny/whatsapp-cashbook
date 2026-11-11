@@ -36,6 +36,7 @@ class WhatsappService {
     this.sessionId = newSessionId;
   }
 
+  // TODO: add idempotency key
   public async sendText<T extends {
     phone?: User['phone'],
     whatsappAnonId?: User['whatsappAnonId'],
