@@ -465,7 +465,6 @@ const processUnofficialWebhook = async (req: TypedRequest<{ body: UnofficialWebh
                 },
               });
 
-              // TODO: we will need to grab whatsapp anon when sending the message
               const newUser = await tx.user.update({
                 where: {
                   id: user.value!.id,

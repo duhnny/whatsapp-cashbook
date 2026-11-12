@@ -4,10 +4,11 @@ import { validatedRoute } from "../middleware/validation.js";
 import { SignupRequestBody, SignupRequestBodySchema } from "../schemas/auth.js";
 import { AuthedRequest, InternalServerError, TypedRequest } from "../schemas/global.js";
 import { InfoLvl, logger } from "../utils/logging.js";
-import { err, ok, tryCatch } from "../utils/result.js";
+import { err, ok, syncTryCatch, tryCatch } from "../utils/result.js";
 import { eventsHandlerService } from "../services/events.js";
 import { quickHash } from "../utils/strings.js";
 import { authenticatedRoute } from "../middleware/auth.js";
+import { whatsappService } from "../services/whatsapp.js";
 
 export class UserAlreadyExistsError extends Error {
   readonly _tag = 'UserAlreadyExists'
@@ -17,6 +18,18 @@ export class UserAlreadyExistsError extends Error {
   constructor(duplicateField: 'email' | 'phone', message: string) {
     super();
     this.duplicateField = duplicateField;
+    this.message = message;
+  }
+}
+
+export class NumberIsNotOnWhatsappError extends Error {
+  readonly _tag = 'NumberIsNotOnWhatsapp'
+  message: string
+  phone: bigint
+
+  constructor(phone: bigint, message: string) {
+    super();
+    this.phone = phone;
     this.message = message;
   }
 }
@@ -71,6 +84,73 @@ const signup = async (req: TypedRequest<{ body: SignupRequestBody }>) => {
     }
   }
 
+  // check whatsapp phone number and anonymous id
+  const checkPhone = await whatsappService.checkPhone(req.body.phone);
+
+  if (checkPhone._tag === 'err') {
+    logger.log(InfoLvl.Warning, 'Whatsapp api returned error while checking phone', {
+      reqId: req.id,
+      phone: req.body.phone,
+      error: checkPhone.error,
+    });
+
+    return err(new InternalServerError('WhatsApp service temporarily unavailable. Please try again in a few minutes'));
+  }
+
+  if (!checkPhone.value.exists) {
+    logger.log(InfoLvl.Debug, 'Attempt to create an account with a phone that is not registered on Whatsapp', {
+      reqId: req.id,
+      phone: req.body.phone,
+      email: req.body.email,
+    });
+
+    return err(new NumberIsNotOnWhatsappError(req.body.phone, 'The number provided is not on WhatsApp. Please provide a valid number'));
+  }
+
+  const whatsappAnonIdResponse = await whatsappService.getWhatsappAnonId(req.body.phone);
+
+  if (whatsappAnonIdResponse._tag === 'err') {
+    logger.log(InfoLvl.Warning, 'Whatsapp api returned error while trying to get anon id', {
+      reqId: req.id,
+      phone: req.body.phone,
+      error: whatsappAnonIdResponse.error,
+    });
+
+    return err(new InternalServerError('WhatsApp service temporarily unavailable. Please try again in a few minutes'));
+  }
+
+  // now we know that whatsappAnonIdResponse.value.whatsappAnonId holds the whatsapp anon id
+  // if it exists, because we already checked the number
+  let whatsappAnonId: bigint | null = null;
+
+  if (whatsappAnonIdResponse.value.whatsappAnonId) {
+    const match = whatsappAnonIdResponse.value.whatsappAnonId.match(/\d+\@lid/);
+
+    if (!match) {
+      logger.log(InfoLvl.Error, 'Whatsapp anon id not in expected format', {
+        expected: '<number>@lid',
+        anonId: whatsappAnonIdResponse.value.whatsappAnonId,
+      });
+
+      return err(new InternalServerError('Whatsapp service behaving unexpectedly. Please try again in a few minutes'));
+    }
+
+    const numbersOfWhatsappAnonId = whatsappAnonIdResponse.value.whatsappAnonId.replace('@lid', '');
+
+    const parsedWhatsappId = syncTryCatch(() => BigInt(numbersOfWhatsappAnonId))
+
+    if (parsedWhatsappId._tag === 'err') {
+      logger.log(InfoLvl.Error, 'Whatsapp anon id not in expected format', {
+        expected: '<number>@lid',
+        anonId: whatsappAnonIdResponse.value.whatsappAnonId,
+      });
+
+      return err(new InternalServerError('Whatsapp service behaving unexpectedly. Please try again in a few minutes'));
+    }
+
+    whatsappAnonId = parsedWhatsappId.value;
+  }
+
   // if we get here, user creation is possible
   const transactionResult = await tryCatch(db.$transaction(async (tx) => {
     const user = await tx.user.create({
@@ -80,6 +160,8 @@ const signup = async (req: TypedRequest<{ body: SignupRequestBody }>) => {
         phone: req.body.phone,
 
         credentialsProvider: 'CLERK',
+
+        whatsappAnonId,
       },
     });
 
@@ -236,6 +318,8 @@ export const authRoutes: FastifyPluginAsync = async (app, opts) => {
         case 'ValidationError':
         case 'UserAlreadyExists':
           return res.code(400).send(response);
+        case 'NumberIsNotOnWhatsapp':
+          return res.code(404).send(response);
         case 'InternalServerError':
           return res.code(500).send(response);
       }

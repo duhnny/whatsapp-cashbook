@@ -1,5 +1,6 @@
 import { User } from "../../prisma/client/client.js";
 import { config } from "../config/config.js";
+import { WhatsappCheckPhoneResponseBodySchema, WhatsappGetAnonIdResponseBodySchema } from "../schemas/whatsapp.js";
 import { logger, InfoLvl } from "../utils/logging.js";
 import { err, ok, tryCatch } from "../utils/result.js";
 
@@ -47,7 +48,6 @@ class WhatsappService {
     this.sessionId = newSessionId;
   }
 
-  // TODO: add idempotency key
   public async sendText<T extends WhatsappUser>({ user, text, idempotencyKey }: SendTextParams<T>) {
     if (user.phone === undefined && user.whatsappAnonId === undefined) {
       logger.log(InfoLvl.Warning, 'whatsappService.sendText was called with user without whatsapp identification', {
@@ -99,6 +99,120 @@ class WhatsappService {
 
     return ok({
       success: true,
+    });
+  }
+
+  public async checkPhone(phone: bigint) {
+    const url = `${this.baseUrl}/sessions/${this.sessionId}/contacts/check/${phone}`;
+
+    const response = await tryCatch(fetch(url, {
+      method: 'GET',
+      headers: {
+        'X-API-Key': config.OPENWA_API_KEY,
+      },
+    }));
+
+    if (response._tag === 'err') {
+      logger.log(InfoLvl.Error, 'Whatsapp api returned error while trying to check number', {
+        phone: phone,
+        error: response.error.message,
+      });
+
+      return err(new WhatsappApiError('Unable to check phone number'));
+    }
+
+    const responseBody = await tryCatch(response.value.json());
+
+    if (responseBody._tag === 'err') {
+      const bytes = await tryCatch(response.value.bytes());
+
+      logger.log(InfoLvl.Error, 'Whatsapp api did not return valid json', {
+        url,
+        raw: bytes._tag === 'ok' ? bytes.value.toBase64() : undefined,
+      });
+
+      return err(new WhatsappApiError('WhatsApp api did not return valid JSON'));
+    }
+
+    const parsedBody = WhatsappCheckPhoneResponseBodySchema.safeParse(responseBody.value);
+
+    if (!parsedBody.success) {
+      logger.log(InfoLvl.Error, 'Whatsapp api did not return expected response schema while checking phone', {
+        phone,
+        url,
+        body: responseBody.value,
+      });
+
+      return err(new WhatsappApiError('Whatsapp api did not return expected schema'));
+    }
+
+    if (parsedBody.data.exists && parsedBody.data.whatsappId) {
+      logger.log(InfoLvl.Trace, 'Checked and found whatsapp phone', {
+        phone,
+        whatsappId: parsedBody.data.whatsappId,
+      });
+
+      return ok({
+        exists: parsedBody.data.exists,
+        whatsappId: parsedBody.data.whatsappId,
+      });
+    } else {
+      return ok({
+        exists: false,
+      });
+    }
+  }
+
+  /** 
+  * will return null if either the number does not exist in whatsapp
+  * or if it does not have an anonymous id.
+  */
+  public async getWhatsappAnonId(phone: bigint) {
+    const url = `${this.baseUrl}/sessions/${this.sessionId}/contacts/${phone}/lid`;
+
+    const response = await tryCatch(fetch(url, {
+      method: 'GET',
+      headers: {
+        'X-API-Key': config.OPENWA_API_KEY,
+      },
+    }));
+
+    if (response._tag === 'err') {
+      logger.log(InfoLvl.Error, 'Whatsapp api returned error while trying to get anon id', {
+        phone: phone,
+        error: response.error.message,
+      });
+
+      return err(new WhatsappApiError('Unable to get anon id'));
+    }
+
+    const responseBody = await tryCatch(response.value.json());
+
+    if (responseBody._tag === 'err') {
+      const bytes = await tryCatch(response.value.bytes());
+
+      logger.log(InfoLvl.Error, 'Whatsapp api did not return valid json', {
+        url,
+        raw: bytes._tag === 'ok' ? bytes.value.toBase64() : undefined,
+      });
+
+      return err(new WhatsappApiError('WhatsApp api did not return valid JSON'));
+    }
+
+    const parsedBody = WhatsappGetAnonIdResponseBodySchema.safeParse(responseBody.value);
+
+    if (!parsedBody.success) {
+      logger.log(InfoLvl.Error, 'Whatsapp api did not return expected response schema while getting anon id', {
+        phone,
+        url,
+        body: responseBody.value,
+      });
+
+      return err(new WhatsappApiError('Whatsapp api did not return expected schema'));
+    }
+
+    return ok({
+      whatsappAnonId: parsedBody.data.lid,
     });
   }
 }
