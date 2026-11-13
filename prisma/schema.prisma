@@ -23,7 +23,7 @@ model User {
   credentialsProviderId String?        @unique
   email                 String?        @unique
   name                  String
-  phone                 BigInt
+  phone                 BigInt?        @unique
 
   roles                 Role[]
   active                Boolean        @default(true)
