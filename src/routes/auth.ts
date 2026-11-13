@@ -1,11 +1,16 @@
 import { FastifyPluginAsync } from "fastify";
 import { config, db } from "../config/config.js";
 import { validatedRoute } from "../middleware/validation.js";
-import { SignupRequestBody, SignupRequestBodySchema } from "../schemas/auth.js";
-import { AuthedRequest, InternalServerError, TypedRequest } from "../schemas/global.js";
+import {
+  RequestWhatsappVerificationRequestBody,
+  RequestWhatsappVerificationRequestBodySchema,
+  SignupRequestBody,
+  SignupRequestBodySchema,
+} from "../schemas/auth.js";
+import { InternalServerError, TypedAuthedRequest, TypedRequest } from "../schemas/global.js";
 import { InfoLvl, logger } from "../utils/logging.js";
 import { err, ok, syncTryCatch, tryCatch } from "../utils/result.js";
-import { eventsHandlerService } from "../services/events.js";
+import { EventProcessingStates, eventsHandlerService } from "../services/events.js";
 import { quickHash } from "../utils/strings.js";
 import { authenticatedRoute } from "../middleware/auth.js";
 import { whatsappService } from "../services/whatsapp.js";
@@ -13,12 +18,11 @@ import { AsyncReturn } from "../utils/types.js";
 
 export class UserAlreadyExistsError extends Error {
   readonly _tag = 'UserAlreadyExists'
-  duplicateField: 'email' | 'phone'
+  readonly duplicateField = 'email'
   message: string
 
-  constructor(duplicateField: 'email' | 'phone', message: string) {
+  constructor(message: string) {
     super();
-    this.duplicateField = duplicateField;
     this.message = message;
   }
 }
@@ -38,10 +42,7 @@ export class NumberIsNotOnWhatsappError extends Error {
 const signup = async (req: TypedRequest<{ body: SignupRequestBody }>) => {
   const foundUsers = await tryCatch(db.user.findMany({
     where: {
-      OR: [
-        { email: req.body.email },
-        { phone: req.body.phone },
-      ],
+      email: req.body.email,
     },
   }));
 
@@ -55,34 +56,119 @@ const signup = async (req: TypedRequest<{ body: SignupRequestBody }>) => {
   }
 
   if (foundUsers.value.length !== 0) {
-    const user = foundUsers.value[0];
+    logger.log(InfoLvl.Trace, 'Tried to sign up with email that already exists in database', {
+      reqId: req.id,
+      email: req.body.email,
+    });
 
-    if (user?.email === req.body.email) {
-      logger.log(InfoLvl.Trace, 'Tried to sign up with email that already exists in database', {
-        reqId: req.id,
+    return err(new UserAlreadyExistsError(`User with email <${req.body.email}> already exists`));
+  }
+
+  // if we get here, user creation is possible
+  const transactionResult = await tryCatch(db.$transaction(async (tx) => {
+    const user = await tx.user.create({
+      data: {
+        name: req.body.name,
         email: req.body.email,
-      });
 
-      return err(new UserAlreadyExistsError('email', `User with email <${req.body.email}> already exists`));
+        credentialsProvider: 'CLERK',
+      },
+    });
 
-    } else if (user?.phone === req.body.phone) {
-      logger.log(InfoLvl.Trace, 'Tried to sign up with phone that already exists in database', {
-        reqId: req.id,
-        phone: req.body.phone,
-      });
+    const event = await tx.event.create({
+      data: {
+        name: 'users_creation',
+        idempotencyKey: quickHash(),
+        userId: user.id,
+      },
+    });
 
-      return err(new UserAlreadyExistsError('phone', `User with phone <${req.body.phone}> already exists`));
+    return { user, event };
+  }));
 
-    } else {
-      logger.log(InfoLvl.Error, 'Found users when querying the database for email or phone, but they do not match', {
-        reqId: req.id,
-        userId: user?.id,
-        email: req.body.email,
-        phone: req.body.phone,
-      });
+  if (transactionResult._tag === 'err') {
+    logger.log(InfoLvl.Error, 'Unable to create user or user creation event in db', {
+      reqId: req.id,
+      email: req.body.email,
+      error: transactionResult.error,
+    });
 
-      return err(new InternalServerError('Unable to signup. Please try again later'));
-    }
+    return err(new InternalServerError('Unable to signup. Please try again later'));
+  }
+
+  // trigger event processing to do background tasks after user creation
+  // IMPORTANT: we do this without awaiting, so that the thread is not blocked
+  eventsHandlerService.run();
+
+  return ok({
+    message: 'User created successfully! Please, verify WhatsApp to finish sign up.' as const,
+  });
+}
+
+const signupRoute = validatedRoute({ body: SignupRequestBodySchema }, signup);
+
+export type SignupResponseBody = AsyncReturn<typeof signupRoute>;
+
+class ServerProcessingUserCreationError extends Error {
+  readonly _tag = 'ServerProcessingUserCreation'
+  message: string
+
+  constructor(message: string) {
+    super();
+    this.message = message;
+  }
+}
+
+const requestWhatsappVerification = async (req: TypedAuthedRequest<{ body: RequestWhatsappVerificationRequestBody }>) => {
+  // get user creation event
+  const event = await tryCatch(db.event.findFirst({
+    where: {
+      name: 'users_creation',
+      userId: req.user.id,
+    },
+  }));
+
+  if (event._tag === 'err') {
+    logger.log(InfoLvl.Error, 'Unable to locate user creation event with error', {
+      reqId: req.id,
+      userId: req.user.id,
+      error: event.error,
+    });
+
+    return err(new InternalServerError('Unable to send whatsapp verification. Please try again later'));
+  }
+
+  if (!event.value) {
+    logger.log(InfoLvl.Error, 'Unable to locate user creation event', {
+      reqId: req.id,
+      userId: req.user.id,
+    });
+
+    return err(new InternalServerError('Unable to send whatsapp verification. Please try again later'));
+  }
+
+  if (event.value.done || event.value.processingStage >= EventProcessingStates.users_creation.whatsapp_verification_passed) {
+    logger.log(InfoLvl.Trace, 'Whatsapp verification requested for already verified user', {
+      userId: req.user.id,
+      eventId: event.value.id,
+      eventDone: event.value.done,
+      eventProcessingStage: event.value.processingStage,
+    });
+
+    return ok({
+      alreadyVerified: true,
+      message: 'User has already verified whatsapp' as const,
+    });
+  }
+
+  if (event.value.processingStage === 0) {
+    logger.log(InfoLvl.Trace, 'Attempt to verify whatsapp before credentials provider user creation', {
+      reqId: req.id,
+      userId: req.user.id,
+      eventId: event.value.id,
+    });
+
+    return err(new ServerProcessingUserCreationError('The server is still processing the user creation. Please wait a few seconds and try again'));
   }
 
   // check whatsapp phone number and anonymous id
@@ -101,8 +187,8 @@ const signup = async (req: TypedRequest<{ body: SignupRequestBody }>) => {
   if (!checkPhone.value.exists) {
     logger.log(InfoLvl.Debug, 'Attempt to create an account with a phone that is not registered on Whatsapp', {
       reqId: req.id,
+      userId: event.value.userId,
       phone: req.body.phone,
-      email: req.body.email,
     });
 
     return err(new NumberIsNotOnWhatsappError(req.body.phone, 'The number provided is not on WhatsApp. Please provide a valid number'));
@@ -151,117 +237,8 @@ const signup = async (req: TypedRequest<{ body: SignupRequestBody }>) => {
 
     whatsappAnonId = parsedWhatsappId.value;
   }
-
-  // if we get here, user creation is possible
-  const transactionResult = await tryCatch(db.$transaction(async (tx) => {
-    const user = await tx.user.create({
-      data: {
-        name: req.body.name,
-        email: req.body.email,
-        phone: req.body.phone,
-
-        credentialsProvider: 'CLERK',
-
-        whatsappAnonId,
-      },
-    });
-
-    const event = await tx.event.create({
-      data: {
-        name: 'users_creation',
-        idempotencyKey: quickHash(),
-        userId: user.id,
-      },
-    });
-
-    return { user, event };
-  }));
-
-  if (transactionResult._tag === 'err') {
-    logger.log(InfoLvl.Error, 'Unable to create user or user creation event in db', {
-      reqId: req.id,
-      email: req.body.email,
-      error: transactionResult.error,
-    });
-
-    return err(new InternalServerError('Unable to signup. Please try again later'));
-  }
-
-  // trigger event processing to do background tasks after user creation
-  // IMPORTANT: we do this without awaiting, so that the thread is not blocked
-  eventsHandlerService.run();
-
-  return ok({
-    message: 'User created successfully! Please, verify WhatsApp to finish sign up.' as const,
-  });
-}
-
-const signupRoute = validatedRoute({ body: SignupRequestBodySchema }, signup);
-
-export type SignupResponseBody = AsyncReturn<typeof signupRoute>;
-
-class ServerProcessingUserCreationError extends Error {
-  readonly _tag = 'ServerProcessingUserCreation'
-  message: string
-
-  constructor(message: string) {
-    super();
-    this.message = message;
-  }
-}
-
-const requestWhatsappVerification = async (req: AuthedRequest) => {
-  // get user creation event
-  const event = await tryCatch(db.event.findFirst({
-    where: {
-      name: 'users_creation',
-      userId: req.user.id,
-    },
-  }));
-
-  if (event._tag === 'err') {
-    logger.log(InfoLvl.Error, 'Unable to locate user creation event with error', {
-      reqId: req.id,
-      userId: req.user.id,
-      error: event.error,
-    });
-
-    return err(new InternalServerError('Unable to send whatsapp verification. Please try again later'));
-  }
-
-  if (!event.value) {
-    logger.log(InfoLvl.Error, 'Unable to locate user creation event', {
-      reqId: req.id,
-      userId: req.user.id,
-    });
-
-    return err(new InternalServerError('Unable to send whatsapp verification. Please try again later'));
-  }
-
-  if (event.value.done || event.value.processingStage >= 2) {
-    logger.log(InfoLvl.Trace, 'Whatsapp verification requested for already verified user', {
-      userId: req.user.id,
-      eventId: event.value.id,
-      eventDone: event.value.done,
-      eventProcessingStage: event.value.processingStage,
-    });
-
-    return ok({
-      alreadyVerified: true,
-      message: 'User has already verified whatsapp' as const,
-    });
-  }
-
-  if (event.value.processingStage === 0) {
-    logger.log(InfoLvl.Trace, 'Attempt to verify whatsapp before credentials provider user creation', {
-      reqId: req.id,
-      userId: req.user.id,
-      eventId: event.value.id,
-    });
-
-    return err(new ServerProcessingUserCreationError('The server is still processing the user creation. Please wait a few seconds and try again'));
-  }
-
+  
+  // now we can create a session and update the phone in the users table
   logger.log(InfoLvl.Trace, 'Creating whatsapp session for whatsapp confirmation', {
     reqId: req.id,
     userId: req.user.id,
@@ -279,7 +256,7 @@ const requestWhatsappVerification = async (req: AuthedRequest) => {
       },
     });
 
-    const event = await tx.event.create({
+    const whatsappConfirmationEvent = await tx.event.create({
       data: {
         name: 'whatsapp_confirmation_requested',
 
@@ -291,7 +268,18 @@ const requestWhatsappVerification = async (req: AuthedRequest) => {
       },
     });
 
-    return { event, session };
+    // TODO: create check in database that does not allow users_creation event without userId
+    const user = await tx.user.update({
+      where: {
+        id: event.value!.userId!,
+      },
+      data: {
+        phone: req.body.phone,
+        whatsappAnonId,
+      },
+    })
+
+    return { whatsappConfirmationEvent, session, user };
   }));
 
   if (transactionResult._tag === 'err') {
@@ -305,12 +293,19 @@ const requestWhatsappVerification = async (req: AuthedRequest) => {
   }
 
   return ok({
-    alreadyVerified: true,
+    alreadyVerified: false,
     message: 'Verification message sent' as const,
   });
 }
 
-const requestWhatsappVerificationRoute = authenticatedRoute(requestWhatsappVerification);
+const requestWhatsappVerificationRoute = authenticatedRoute(
+  validatedRoute(
+    {
+      body: RequestWhatsappVerificationRequestBodySchema,
+    },
+    requestWhatsappVerification,
+  ),
+);
 
 export type RequestWhatsappVerificationResponseBody = AsyncReturn<typeof requestWhatsappVerificationRoute>;
 
@@ -323,8 +318,6 @@ export const authRoutes: FastifyPluginAsync = async (app, opts) => {
         case 'ValidationError':
         case 'UserAlreadyExists':
           return res.code(400).send(response);
-        case 'NumberIsNotOnWhatsapp':
-          return res.code(404).send(response);
         case 'InternalServerError':
           return res.code(500).send(response);
       }
@@ -341,6 +334,10 @@ export const authRoutes: FastifyPluginAsync = async (app, opts) => {
         case 'Unauthenticated':
         case 'MalformedJWT':
           return res.code(401).send(response);
+        case 'ValidationError':
+          return res.code(400).send(response);
+        case 'NumberIsNotOnWhatsapp':
+          return res.code(404).send(response);
         case 'InternalServerError':
           return res.code(500).send(response);
         case 'ServerProcessingUserCreation':
