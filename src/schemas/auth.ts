@@ -8,7 +8,7 @@ export const SignupRequestBodySchema = z.object({
 export type SignupRequestBody = z.infer<typeof SignupRequestBodySchema>;
 
 export const RequestWhatsappVerificationRequestBodySchema = z.object({
-  phone: z.bigint(),
+  phone: z.coerce.bigint(),
 });
 
 export type RequestWhatsappVerificationRequestBody = z.infer<typeof RequestWhatsappVerificationRequestBodySchema>;
