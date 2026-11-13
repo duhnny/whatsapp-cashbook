@@ -9,6 +9,7 @@ import { eventsHandlerService } from "../services/events.js";
 import { quickHash } from "../utils/strings.js";
 import { authenticatedRoute } from "../middleware/auth.js";
 import { whatsappService } from "../services/whatsapp.js";
+import { AsyncReturn } from "../utils/types.js";
 
 export class UserAlreadyExistsError extends Error {
   readonly _tag = 'UserAlreadyExists'
@@ -197,6 +198,8 @@ const signup = async (req: TypedRequest<{ body: SignupRequestBody }>) => {
 
 const signupRoute = validatedRoute({ body: SignupRequestBodySchema }, signup);
 
+export type SignupResponseBody = AsyncReturn<typeof signupRoute>;
+
 class ServerProcessingUserCreationError extends Error {
   readonly _tag = 'ServerProcessingUserCreation'
   message: string
@@ -308,6 +311,8 @@ const requestWhatsappVerification = async (req: AuthedRequest) => {
 }
 
 const requestWhatsappVerificationRoute = authenticatedRoute(requestWhatsappVerification);
+
+export type RequestWhatsappVerificationResponseBody = AsyncReturn<typeof requestWhatsappVerificationRoute>;
 
 export const authRoutes: FastifyPluginAsync = async (app, opts) => {
   app.post('/signup', async (req, res) => {

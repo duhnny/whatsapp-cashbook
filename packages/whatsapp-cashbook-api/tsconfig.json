@@ -1,0 +1,38 @@
+{
+  "$schema": "https://www.schemastore.org/tsconfig",
+  "_version": "25.3.0",
+
+
+  "compilerOptions": {
+    "lib": [
+      "es2024",
+      "ESNext.Array",
+      "ESNext.Collection",
+      "ESNext.Error",
+      "ESNext.Iterator",
+      "ESNext.Promise"
+    ],
+    "module": "nodenext",
+    "target": "es2024",
+
+    "strict": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noImplicitAny": false,
+    "moduleResolution": "node16",
+
+    "declaration": true,
+    "outDir": "dist",
+
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["../../src/*"],
+      "../../prisma/client/*": ["../../prisma/client/*"]
+    }
+  },
+
+  "include": [
+    "src/**/*",
+    "../../src/fastify.d.ts" 
+  ]
+}

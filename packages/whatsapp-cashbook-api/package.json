@@ -1,0 +1,24 @@
+{
+  "name": "@duhnny/whatsapp-cashbook-api",
+  "version": "0.0.1",
+  "description": "Type definitions for the whatsapp cashbook API",
+  "license": "ISC",
+  "author": "Daniel Betoret",
+  "type": "module",
+  "main": "",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "tsup": "^9.0.0",
+    "typescript": "^6.0.3"
+  }
+}
