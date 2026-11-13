@@ -66,3 +66,18 @@ export const UnofficialWebhookQuerySchema = z.object({
 });
 
 export type UnofficialWebhookQuery = z.infer<typeof UnofficialWebhookQuerySchema>;
+
+export const ClerkWebhookSchema = z.object({
+  type: z.literal('user.created'),
+  data: z.object({
+    id:              z.string(),
+    created_at:      z.int(),
+    first_name:      z.string(),
+    last_name:       z.string(),
+    email_addresses: z.array(z.object({
+      email_address: z.email(),
+    })),
+  }),
+});
+
+export type ClerkWebhook = z.infer<typeof ClerkWebhookSchema>;

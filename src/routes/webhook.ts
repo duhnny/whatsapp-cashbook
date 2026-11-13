@@ -1,13 +1,15 @@
 import { EventName, Session, SessionKind, User } from "../../prisma/client/client.js";
 import { config, db } from "../config/config.js";
+import { verifyClerkWebhook } from "../middleware/auth.js";
 import { validatedRoute } from "../middleware/validation.js";
 import { BasicRequest, InconsistentEventError, InternalServerError, TypedRequest } from "../schemas/global.js";
-import { UnofficialWebhookBody, UnofficialWebhookBodySchema } from "../schemas/webhook.js";
+import { ClerkWebhook, ClerkWebhookSchema, UnofficialWebhookBody, UnofficialWebhookBodySchema } from "../schemas/webhook.js";
 import { aiService } from "../services/ai.js";
 import { EventProcessingStates } from "../services/events.js";
 import { whatsappService } from "../services/whatsapp.js";
 import { InfoLvl, logger } from "../utils/logging.js";
 import { err, ok, tryCatch } from "../utils/result.js";
+import { quickHash } from "../utils/strings.js";
 import { AsyncReturn } from "../utils/types.js";
 
 import { FastifyPluginAsync } from "fastify";
@@ -620,6 +622,68 @@ const processUnofficialWebhookRoute = validatedRoute({ body: UnofficialWebhookBo
 
 export type ProcessUnofficialWebhookResponseBody = AsyncReturn<typeof processUnofficialWebhookRoute>;
 
+export class EmailIsMandatoryError extends Error {
+  readonly _tag = 'EmailIsMandatory'
+  message: string
+
+  constructor(message: string) {
+    super();
+    this.message = message;
+  }
+}
+
+const processClerkWebhook = async (req: TypedRequest<{ body: ClerkWebhook }>) => {
+  if (!req.body.data.email_addresses.length) {
+    logger.log(InfoLvl.Error, 'User created in Clerk without email', {
+      credentialsProviderId: req.body.data.id,
+    });
+
+    return err(new EmailIsMandatoryError('Email field is mandatory on user creation'));
+  }
+
+  const transactionResult = await tryCatch(db.$transaction(async tx => {
+    const user = await tx.user.create({
+      data: {
+        email: req.body.data.email_addresses[0]!.email_address,
+        name: req.body.data.first_name + ' ' + req.body.data.last_name,
+
+        credentialsProvider: 'CLERK',
+        credentialsProviderId: req.body.data.id,
+
+        createdAt: new Date(req.body.data.created_at),
+      },
+    });
+
+    const event = await tx.event.create({
+      data: {
+        name: 'users_creation',
+        userId: user.id,
+        processingStage: EventProcessingStates.users_creation.user_created_in_credentials_provider,
+        idempotencyKey: quickHash(),
+      },
+    });
+
+    return { user, event };
+  }));
+
+  if (transactionResult._tag === 'err') {
+    logger.log(InfoLvl.Error, 'Unable to create clerk user in database internally', {
+      credentialsProvider: 'CLERK',
+      credentialsProviderId: req.body.data.id,
+      error: transactionResult.error,
+    });
+
+    return err(new InternalServerError('Could not create user in internal database. Please, try again later'));
+  }
+
+  return ok({
+    success: true as const,
+    message: 'User created sucessfully!' as const,
+  });
+};
+
+const processClerkWebhookRoute = verifyClerkWebhook(validatedRoute({ body: ClerkWebhookSchema }, processClerkWebhook));
+
 export const webhookRoutes: FastifyPluginAsync = async (app, opts) => {
   app.post('/whatsapp/unofficial', async (req, res) => {
     const response = await processUnofficialWebhookRoute(req);
@@ -628,6 +692,24 @@ export const webhookRoutes: FastifyPluginAsync = async (app, opts) => {
       switch (response.error._tag) {
         case 'ValidationError':
           return res.code(400).send(response);
+        case 'InternalServerError':
+          return res.code(500).send(response);
+      }
+    }
+
+    return res.code(200).send(ok(response.value));
+  });
+
+  app.post('/clerk', async (req, res) => {
+    const response = await processClerkWebhookRoute(req);
+
+    if (response._tag === 'err') {
+      switch (response.error._tag) {
+        case 'ValidationError':
+        case 'EmailIsMandatory':
+          return res.code(400).send(response);
+        case 'Forbidden':
+          return res.code(403).send(response);
         case 'InternalServerError':
           return res.code(500).send(response);
       }
