@@ -1,5 +1,6 @@
 import { EventName, Session, SessionKind, User } from "../../prisma/client/client.js";
 import { config, db } from "../config/config.js";
+import { verifyClerkWebhook } from "../middleware/auth.js";
 import { validatedRoute } from "../middleware/validation.js";
 import { BasicRequest, InconsistentEventError, InternalServerError, TypedRequest } from "../schemas/global.js";
 import { ClerkWebhook, ClerkWebhookSchema, UnofficialWebhookBody, UnofficialWebhookBodySchema } from "../schemas/webhook.js";
@@ -681,7 +682,7 @@ const processClerkWebhook = async (req: TypedRequest<{ body: ClerkWebhook }>) =>
   });
 };
 
-const processClerkWebhookRoute = validatedRoute({ body: ClerkWebhookSchema }, processClerkWebhook);
+const processClerkWebhookRoute = verifyClerkWebhook(validatedRoute({ body: ClerkWebhookSchema }, processClerkWebhook));
 
 export const webhookRoutes: FastifyPluginAsync = async (app, opts) => {
   app.post('/whatsapp/unofficial', async (req, res) => {
@@ -707,6 +708,8 @@ export const webhookRoutes: FastifyPluginAsync = async (app, opts) => {
         case 'ValidationError':
         case 'EmailIsMandatory':
           return res.code(400).send(response);
+        case 'Forbidden':
+          return res.code(403).send(response);
         case 'InternalServerError':
           return res.code(500).send(response);
       }

@@ -1,11 +1,13 @@
 import { InfoLvl, logger } from '../utils/logging.js';
-import { config, db } from '../config/config.js';
+import { auth, config, db } from '../config/config.js';
 import z from 'zod';
 import jwt from 'jsonwebtoken';
 import { CredentialsProvider, Role } from '../../prisma/client/enums.js';
 import { err, tryCatch } from '../utils/result.js';
-import { AuthedRequest, BasicRequest, BasicUserData, InternalServerError, RoleRequiredError, UnauthenticatedError } from '../schemas/global.js';
+import { AuthedRequest, BasicRequest, BasicUserData, ForbiddenError, InternalServerError, RoleRequiredError, UnauthenticatedError } from '../schemas/global.js';
 import { HyperlinkSchema } from '../utils/strings.js';
+
+import { verifyWebhook } from "@clerk/fastify/webhooks";
 
 const DecodedTokenSchema = z.object({
   // expiration
@@ -166,6 +168,24 @@ export const requiredRolesRoute = <T, R extends BasicRequest>(
     // check if list of allowed roles includes at least one user role
     if (!req.user.roles.some(role => allowedRoles.includes(role))) {
       return err(new RoleRequiredError(req.user.roles, allowedRoles));
+    }
+
+    // run next in line
+    return await next(req);
+  }
+}
+
+export const verifyClerkWebhook = <T, R extends BasicRequest>(next: (req: R) => Promise<T>) => {
+  return async (req: R) => {
+    const event = await tryCatch(verifyWebhook(req, { signingSecret: config.CLERK_WEBHOOK_SIGNING_KEY }));
+
+    if (event._tag === 'err') {
+      logger.log(InfoLvl.Debug, 'Recieved webhook call in the Clerk endpoint uncorrectly signed', {
+        reqId: req.id,
+        error: event.error,
+      });
+
+      return err(new ForbiddenError('Webhook incorrectly signed'));
     }
 
     // run next in line

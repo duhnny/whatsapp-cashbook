@@ -49,6 +49,7 @@ const ConfigSchema = z.object({
   CLERK_PUBLISHABLE_KEY:        z.string(),
   CLERK_SECRET_KEY:             z.string(),
   CLERK_JWT_KEY:                z.string(),
+  CLERK_WEBHOOK_SIGNING_KEY:    z.string(),
 
   // whatsapp config
   WHATSAPP_SESSION_EXPIRY_SECS: optionalIntSchema,
