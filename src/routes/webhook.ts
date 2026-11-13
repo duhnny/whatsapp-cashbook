@@ -621,7 +621,7 @@ const processUnofficialWebhookRoute = validatedRoute({ body: UnofficialWebhookBo
 export type ProcessUnofficialWebhookResponseBody = AsyncReturn<typeof processUnofficialWebhookRoute>;
 
 export const webhookRoutes: FastifyPluginAsync = async (app, opts) => {
-  app.post('/unofficial', async (req, res) => {
+  app.post('/whatsapp/unofficial', async (req, res) => {
     const response = await processUnofficialWebhookRoute(req);
 
     if (response._tag === 'err') {
