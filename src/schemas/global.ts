@@ -5,8 +5,8 @@ import z from 'zod';
 
 export type BasicUserData = {
   id: ID,
-  phone: bigint,
-  email: string | null,
+  phone: bigint | null,
+  email: string,
   roles: Role[]
 };
 
