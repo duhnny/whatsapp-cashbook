@@ -39,75 +39,75 @@ export class NumberIsNotOnWhatsappError extends Error {
   }
 }
 
-const signup = async (req: TypedRequest<{ body: SignupRequestBody }>) => {
-  const foundUsers = await tryCatch(db.user.findMany({
-    where: {
-      email: req.body.email,
-    },
-  }));
-
-  if (foundUsers._tag === 'err') {
-    logger.log(InfoLvl.Error, 'Could not check for email on signup', {
-      reqId: req.id,
-      email: req.body.email,
-      error: foundUsers.error,
-    });
-    return err(new InternalServerError('Unable to signup. Please try again later'));
-  }
-
-  if (foundUsers.value.length !== 0) {
-    logger.log(InfoLvl.Trace, 'Tried to sign up with email that already exists in database', {
-      reqId: req.id,
-      email: req.body.email,
-    });
-
-    return err(new UserAlreadyExistsError(`User with email <${req.body.email}> already exists`));
-  }
-
-  // if we get here, user creation is possible
-  const transactionResult = await tryCatch(db.$transaction(async (tx) => {
-    const user = await tx.user.create({
-      data: {
-        name: req.body.name,
-        email: req.body.email,
-
-        credentialsProvider: 'CLERK',
-      },
-    });
-
-    const event = await tx.event.create({
-      data: {
-        name: 'users_creation',
-        idempotencyKey: quickHash(),
-        userId: user.id,
-      },
-    });
-
-    return { user, event };
-  }));
-
-  if (transactionResult._tag === 'err') {
-    logger.log(InfoLvl.Error, 'Unable to create user or user creation event in db', {
-      reqId: req.id,
-      email: req.body.email,
-      error: transactionResult.error,
-    });
-
-    return err(new InternalServerError('Unable to signup. Please try again later'));
-  }
-
-  // trigger event processing to do background tasks after user creation
-  // IMPORTANT: we do this without awaiting, so that the thread is not blocked
-  eventsHandlerService.run();
-
-  return ok({
-    message: 'User created successfully! Please, verify WhatsApp to finish sign up.' as const,
-  });
-}
-
-const signupRoute = validatedRoute({ body: SignupRequestBodySchema }, signup);
-
-export type SignupResponseBody = AsyncReturn<typeof signupRoute>;
+// const signup = async (req: TypedRequest<{ body: SignupRequestBody }>) => {
+//   const foundUsers = await tryCatch(db.user.findMany({
+//     where: {
+//       email: req.body.email,
+//     },
+//   }));
+// 
+//   if (foundUsers._tag === 'err') {
+//     logger.log(InfoLvl.Error, 'Could not check for email on signup', {
+//       reqId: req.id,
+//       email: req.body.email,
+//       error: foundUsers.error,
+//     });
+//     return err(new InternalServerError('Unable to signup. Please try again later'));
+//   }
+// 
+//   if (foundUsers.value.length !== 0) {
+//     logger.log(InfoLvl.Trace, 'Tried to sign up with email that already exists in database', {
+//       reqId: req.id,
+//       email: req.body.email,
+//     });
+// 
+//     return err(new UserAlreadyExistsError(`User with email <${req.body.email}> already exists`));
+//   }
+// 
+//   // if we get here, user creation is possible
+//   const transactionResult = await tryCatch(db.$transaction(async (tx) => {
+//     const user = await tx.user.create({
+//       data: {
+//         name: req.body.name,
+//         email: req.body.email,
+// 
+//         credentialsProvider: 'CLERK',
+//       },
+//     });
+// 
+//     const event = await tx.event.create({
+//       data: {
+//         name: 'users_creation',
+//         idempotencyKey: quickHash(),
+//         userId: user.id,
+//       },
+//     });
+// 
+//     return { user, event };
+//   }));
+// 
+//   if (transactionResult._tag === 'err') {
+//     logger.log(InfoLvl.Error, 'Unable to create user or user creation event in db', {
+//       reqId: req.id,
+//       email: req.body.email,
+//       error: transactionResult.error,
+//     });
+// 
+//     return err(new InternalServerError('Unable to signup. Please try again later'));
+//   }
+// 
+//   // trigger event processing to do background tasks after user creation
+//   // IMPORTANT: we do this without awaiting, so that the thread is not blocked
+//   eventsHandlerService.run();
+// 
+//   return ok({
+//     message: 'User created successfully! Please, verify WhatsApp to finish sign up.' as const,
+//   });
+// }
+// 
+// const signupRoute = validatedRoute({ body: SignupRequestBodySchema }, signup);
+// 
+// export type SignupResponseBody = AsyncReturn<typeof signupRoute>;
 
 class ServerProcessingUserCreationError extends Error {
   readonly _tag = 'ServerProcessingUserCreation'
@@ -292,6 +292,10 @@ const requestWhatsappVerification = async (req: TypedAuthedRequest<{ body: Reque
     return err(new InternalServerError('Unable to send whatsapp verification. Please try again later'));
   }
 
+  // trigger event processing to do background tasks after user creation
+  // IMPORTANT: we do this without awaiting, so that the thread is not blocked
+  eventsHandlerService.run();
+
   return ok({
     alreadyVerified: false,
     message: 'Verification message sent' as const,
@@ -310,21 +314,21 @@ const requestWhatsappVerificationRoute = authenticatedRoute(
 export type RequestWhatsappVerificationResponseBody = AsyncReturn<typeof requestWhatsappVerificationRoute>;
 
 export const authRoutes: FastifyPluginAsync = async (app, opts) => {
-  app.post('/signup', async (req, res) => {
-    const response = await signupRoute(req);
+  // app.post('/signup', async (req, res) => {
+  //   const response = await signupRoute(req);
 
-    if (response._tag === 'err') {
-      switch (response.error._tag) {
-        case 'ValidationError':
-        case 'UserAlreadyExists':
-          return res.code(400).send(response);
-        case 'InternalServerError':
-          return res.code(500).send(response);
-      }
-    }
+  //   if (response._tag === 'err') {
+  //     switch (response.error._tag) {
+  //       case 'ValidationError':
+  //       case 'UserAlreadyExists':
+  //         return res.code(400).send(response);
+  //       case 'InternalServerError':
+  //         return res.code(500).send(response);
+  //     }
+  //   }
 
-    return res.code(200).send(ok(response.value));
-  });
+  //   return res.code(200).send(ok(response.value));
+  // });
 
   app.post('/whatsapp-verification', async (req, res) => {
     const response = await requestWhatsappVerificationRoute(req);

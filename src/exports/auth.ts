@@ -1,8 +1,7 @@
 export type {
-  SignupResponseBody,
   RequestWhatsappVerificationResponseBody,
 } from '../routes/auth.js';
 
 export type {
-  SignupRequestBody,
+  RequestWhatsappVerificationRequestBody,
 } from '../schemas/auth.js'
