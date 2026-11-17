@@ -105,6 +105,7 @@ export const authenticatedRoute = <T, R extends AuthedRequest>(
       logger.log(InfoLvl.Debug, 'Received expired JWT token for auth', {
         reqId: req.id,
         ip: req.ip,
+        expiration: parsed.data.exp,
         token: tokenSameOrigin || tokenCrossOrigin,
       });
       return err(new UnauthenticatedError('Auth token is now invalid'));
@@ -115,6 +116,7 @@ export const authenticatedRoute = <T, R extends AuthedRequest>(
       logger.log(InfoLvl.Debug, 'JWT token\'s azp claim does not match allowed origins', {
         reqId: req.id,
         ip: req.ip,
+        azp: parsed.data.azp,
         token: tokenSameOrigin || tokenCrossOrigin,
       });
       return err(new UnauthenticatedError('Invalid \'azp\' claim'));
