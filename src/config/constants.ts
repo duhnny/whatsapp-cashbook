@@ -1,2 +1,3 @@
 export const DEFAULT_PORT = 3000;
 export const DEFAULT_WHATSAPP_SESSION_EXPIRY_SECS = 60 * 3;
+export const DEFAULT_TIMEZONE_OFFSET = '-03:00';
