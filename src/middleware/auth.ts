@@ -46,7 +46,11 @@ export const authenticatedRoute = <T, R extends AuthedRequest>(
     // Retrieve session token from either `__session` cookie for a same-origin request
     // or from the `Authorization` header for cross-origin requests
     const tokenSameOrigin = req.cookies['__session'];
-    const tokenCrossOrigin = req.headers.authorization;
+    let tokenCrossOrigin: string | undefined = undefined;
+
+    if (req.headers.authorization && req.headers.authorization.includes('Bearer ')) {
+      tokenCrossOrigin = req.headers.authorization.split('Bearer ')[1];
+    }
 
     if (!tokenSameOrigin && !tokenCrossOrigin) {
       logger.log(InfoLvl.Info, 'Unauthenticated call', {
@@ -67,7 +71,7 @@ export const authenticatedRoute = <T, R extends AuthedRequest>(
         decoded = jwt.verify(tokenCrossOrigin!, publicKey, options);
       }
     } catch (error) {
-      logger.log(InfoLvl.Warning, 'Received invalid JWT token for auth', {
+      logger.log(InfoLvl.Warning, 'Recieved invalid JWT token for auth', {
         reqId: req.id,
         ip: req.ip,
         token: tokenSameOrigin || tokenCrossOrigin,
