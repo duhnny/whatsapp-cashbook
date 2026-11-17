@@ -7,7 +7,7 @@ import { err, ok, tryCatch } from '../utils/result.js';
 import { User } from '@clerk/fastify';
 import { whatsappService } from './whatsapp.js';
 
-export const EventProcessingStates = {
+export const EventProcessingStages = {
   'users_creation': {
     created: 0 as const,
     user_created_in_credentials_provider: 1 as const,
@@ -139,7 +139,7 @@ class EventsHandlerService {
       let done = event.done;
       let processingStage = event.processingStage;
 
-      if (event.processingStage <= EventProcessingStates.users_creation.created) {
+      if (event.processingStage <= EventProcessingStages.users_creation.created) {
         // user ready for creation in Clerk
         if (event.userId === null) {
           this.logger.log(InfoLvl.Error, `${EventName.users_creation} event does not have user attatched`, {
@@ -232,7 +232,7 @@ class EventsHandlerService {
               id: event.id,
             },
             data: {
-              processingStage: EventProcessingStates.users_creation.user_created_in_credentials_provider,
+              processingStage: EventProcessingStages.users_creation.user_created_in_credentials_provider,
             },
           });
 
@@ -260,7 +260,7 @@ class EventsHandlerService {
         });
       }
 
-      if (event.processingStage <= EventProcessingStates.users_creation.user_created_in_credentials_provider) {
+      if (event.processingStage <= EventProcessingStages.users_creation.user_created_in_credentials_provider) {
         // whatsapp confirmation
         // do nothing
       }
@@ -272,7 +272,7 @@ class EventsHandlerService {
     } else if (event.name === 'whatsapp_confirmation_requested') {
       let processingStage = event.processingStage;
 
-      if (processingStage === EventProcessingStates.whatsapp_confirmation_requested.requested) {
+      if (processingStage === EventProcessingStages.whatsapp_confirmation_requested.requested) {
         // event just created: we need to send a whatsapp message
         if (event.userId === null) {
           this.logger.log(InfoLvl.Error, `${EventName.whatsapp_confirmation_requested} event does not have user attatched`, {
@@ -339,7 +339,7 @@ class EventsHandlerService {
               id: event.id,
             },
             data: {
-              processingStage: EventProcessingStates.whatsapp_confirmation_requested.message_sent,
+              processingStage: EventProcessingStages.whatsapp_confirmation_requested.message_sent,
             },
           });
 
@@ -359,7 +359,7 @@ class EventsHandlerService {
           logger.log(InfoLvl.Warning, 'Unable to update whatsapp confirmation event or whatsapp confirmation session after sending message', {
             eventId: event.id,
             sessionId: event.sessionId,
-            processingStage: EventProcessingStates.whatsapp_confirmation_requested.message_sent,
+            processingStage: EventProcessingStages.whatsapp_confirmation_requested.message_sent,
             done: false,
             error: transactionResult.error,
           });
@@ -368,7 +368,7 @@ class EventsHandlerService {
             message: 'Message was sent but the event could not be updated',
             id: event.id,
             name: event.name,
-            processingStage: EventProcessingStates.whatsapp_confirmation_requested.message_sent,
+            processingStage: EventProcessingStages.whatsapp_confirmation_requested.message_sent,
             done: false,
           }));
         }
@@ -378,7 +378,7 @@ class EventsHandlerService {
           sucess: whatsappResponse.value.success,
         });
         return ok({
-          processingStage: EventProcessingStates.whatsapp_confirmation_requested.message_sent,
+          processingStage: EventProcessingStages.whatsapp_confirmation_requested.message_sent,
           done: false,
         });
       }

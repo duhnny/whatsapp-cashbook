@@ -5,7 +5,7 @@ import { validatedRoute } from "../middleware/validation.js";
 import { BasicRequest, InconsistentEventError, InternalServerError, TypedRequest } from "../schemas/global.js";
 import { ClerkWebhook, ClerkWebhookSchema, UnofficialWebhookBody, UnofficialWebhookBodySchema } from "../schemas/webhook.js";
 import { aiService } from "../services/ai.js";
-import { EventProcessingStates } from "../services/events.js";
+import { EventProcessingStages } from "../services/events.js";
 import { whatsappService } from "../services/whatsapp.js";
 import { InfoLvl, logger } from "../utils/logging.js";
 import { err, ok, tryCatch } from "../utils/result.js";
@@ -429,7 +429,7 @@ const processUnofficialWebhook = async (req: TypedRequest<{ body: UnofficialWebh
                   userId: user.value!.id,
                 },
                 data: {
-                  processingState: EventProcessingStates.users_creation.whatsapp_verification_passed,
+                  processingStage: EventProcessingStages.users_creation.whatsapp_verification_passed,
                   done: true,
                 },
               });
@@ -447,7 +447,7 @@ const processUnofficialWebhook = async (req: TypedRequest<{ body: UnofficialWebh
                   sessionId: session.value!.id,
                 },
                 data: {
-                  processingState: EventProcessingStates.whatsapp_confirmation_requested.completed,
+                  processingStage: EventProcessingStages.whatsapp_confirmation_requested.completed,
                   done: true,
                 },
               });
@@ -508,7 +508,7 @@ const processUnofficialWebhook = async (req: TypedRequest<{ body: UnofficialWebh
                   userId: user.value!.id,
                 },
                 data: {
-                  processingState: EventProcessingStates.users_creation.whatsapp_verification_failed,
+                  processingStage: EventProcessingStages.users_creation.whatsapp_verification_failed,
                 },
               });
 
@@ -525,7 +525,7 @@ const processUnofficialWebhook = async (req: TypedRequest<{ body: UnofficialWebh
                   sessionId: session.value!.id,
                 },
                 data: {
-                  processingState: EventProcessingStates.whatsapp_confirmation_requested.failed,
+                  processingStage: EventProcessingStages.whatsapp_confirmation_requested.failed,
                   done: true,
                 },
               });
@@ -658,7 +658,7 @@ const processClerkWebhook = async (req: TypedRequest<{ body: ClerkWebhook }>) =>
       data: {
         name: 'users_creation',
         userId: user.id,
-        processingStage: EventProcessingStates.users_creation.user_created_in_credentials_provider,
+        processingStage: EventProcessingStages.users_creation.user_created_in_credentials_provider,
         idempotencyKey: quickHash(),
       },
     });

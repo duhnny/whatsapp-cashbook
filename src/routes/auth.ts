@@ -10,7 +10,7 @@ import {
 import { InternalServerError, TypedAuthedRequest, TypedRequest } from "../schemas/global.js";
 import { InfoLvl, logger } from "../utils/logging.js";
 import { err, ok, syncTryCatch, tryCatch } from "../utils/result.js";
-import { EventProcessingStates, eventsHandlerService } from "../services/events.js";
+import { EventProcessingStages, eventsHandlerService } from "../services/events.js";
 import { quickHash } from "../utils/strings.js";
 import { authenticatedRoute } from "../middleware/auth.js";
 import { whatsappService } from "../services/whatsapp.js";
@@ -147,7 +147,7 @@ const requestWhatsappVerification = async (req: TypedAuthedRequest<{ body: Reque
     return err(new InternalServerError('Unable to send whatsapp verification. Please try again later'));
   }
 
-  if (event.value.done || event.value.processingStage >= EventProcessingStates.users_creation.whatsapp_verification_passed) {
+  if (event.value.done || event.value.processingStage >= EventProcessingStages.users_creation.whatsapp_verification_passed) {
     logger.log(InfoLvl.Trace, 'Whatsapp verification requested for already verified user', {
       userId: req.user.id,
       eventId: event.value.id,
