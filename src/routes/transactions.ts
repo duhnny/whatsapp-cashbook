@@ -194,7 +194,7 @@ const getTransactionsSummary = async (req: TypedAuthedRequest<{ query: GetTransa
       AND: [
         { userId: req.user.id },
         { createdAt: { gte: start } },
-        { createdAt: { lt: end } },
+        { createdAt: { lte: end } },
       ],
     },
   }));
