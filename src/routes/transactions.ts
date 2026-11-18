@@ -1,4 +1,4 @@
-import { InternalServerError, TypedAuthedRequest } from "../schemas/global.js";
+import { ForbiddenError, InternalServerError, TypedAuthedRequest } from "../schemas/global.js";
 import {
   CreateTransactionRequestBody,
   CreateTransactionRequestBodySchema,
@@ -77,6 +77,7 @@ const listTransactions = async (req: TypedAuthedRequest<{ query: ListTransaction
     },
     where: {
       AND: [
+        { userId: req.user.id },
         start ? { createdAt: { gte: start } } : {},
         end   ? { createdAt: { lte: end } }   : {},
         req.query.categories ? { category: { in: req.query.categories } } : {},
@@ -201,6 +202,7 @@ const getTransactionsSummary = async (req: TypedAuthedRequest<{ query: GetTransa
     },
     where: {
       AND: [
+        { userId: req.user.id },
         { createdAt: { gte: start } },
         { createdAt: { lt: end } },
       ],
@@ -221,7 +223,7 @@ const getTransactionsSummary = async (req: TypedAuthedRequest<{ query: GetTransa
 
   const categorySqlFilter =
     req.query.categories && req.query.categories.length > 0
-      ? Prisma.sql`where category::text in (${Prisma.join(req.query.categories)})`
+      ? Prisma.sql`AND category::text IN (${Prisma.join(req.query.categories)})`
       : Prisma.empty;
 
   const spendByMonth = await tryCatch(db.$queryRaw<SpendByMonth[]>`
@@ -229,7 +231,9 @@ const getTransactionsSummary = async (req: TypedAuthedRequest<{ query: GetTransa
       date_trunc('month', "createdAt" AT TIME ZONE ${config.TIMEZONE}) AS "month",
       -SUM(amount)::float AS total
     FROM "Transaction"
-    ${categorySqlFilter}
+    WHERE
+      userId = ${req.user.id}
+      ${categorySqlFilter}
     GROUP BY "month"
     HAVING SUM(amount) < 0
     ORDER BY "month" ASC;
@@ -323,11 +327,68 @@ const createTransactionRoute = authenticatedRoute(
 
 export type CreateTransactionResponseBody = AsyncReturn<typeof createTransactionRoute>;
 
+export class TransactionNotFoundError extends Error {
+  readonly _tag = 'TransactionNotFound'
+  message: string
+
+  constructor(message: string) {
+    super();
+    this.message = message;
+  }
+}
+
 const updateTransaction = async (req: TypedAuthedRequest<{
   params: UpdateTransactionRequestParams,
   body: UpdateTransactionRequestBody,
 }>) => {
-  const transaction = await tryCatch(db.transaction.update({
+  const transaction = await tryCatch(db.transaction.findUnique({
+    select: {
+      id: true,
+      userId: true,
+    },
+    where: {
+      id: req.params.id,
+    },
+  }));
+
+  if (transaction._tag === 'err') {
+    logger.log(InfoLvl.Error, 'Unable to get transaction', {
+      reqId: req.id,
+      transactionId: req.params.id,
+      error: transaction.error,
+    });
+
+    return err(new InternalServerError('Unable to update transaction. Please try again in a few seconds'));
+  }
+
+  if (!transaction.value) {
+    logger.log(InfoLvl.Debug, 'Tried to update unexistent transaction', {
+      reqId: req.id,
+      userId: req.user.id,
+      transactionId: req.params.id,
+    });
+
+    return err(new TransactionNotFoundError('Transaction with id provided not found'));
+  }
+
+  if (transaction.value.userId !== req.user.id) {
+    logger.log(InfoLvl.Info, 'User tried to update transaction they do not have access to', {
+      reqId: req.id,
+      userId: req.user.id,
+      transactionId: req.params.id,
+      transactionOwnerId: transaction.value.userId,
+    });
+
+    return err(new ForbiddenError('User does not have access to this transaction'));
+  }
+
+  logger.log(InfoLvl.Trace, 'Transaction exists and user has access to it', {
+    reqId: req.id,
+    userId: req.user.id,
+    transactionId: req.params.id,
+  });
+
+  const newTransaction = await tryCatch(db.transaction.update({
     select: {
       id: true,
       description: true,
@@ -347,7 +408,7 @@ const updateTransaction = async (req: TypedAuthedRequest<{
     },
   }));
 
-  if (transaction._tag === 'err') {
+  if (newTransaction._tag === 'err') {
     logger.log(InfoLvl.Error, 'Unable to update transaction', {
       reqId: req.id,
       transactionId: req.params.id,
@@ -357,15 +418,15 @@ const updateTransaction = async (req: TypedAuthedRequest<{
       category: req.body.category,
       createdAt: req.body.timestamp,
       updatedById: req.user.id,
-      error: transaction.error,
+      error: newTransaction.error,
     });
 
     return err(new InternalServerError('Unable to update transaction. Please try again in a few seconds'));
   }
 
   return ok({
-    ...transaction.value,
-    amount: transaction.value.amount.toNumber(),
+    ...newTransaction.value,
+    amount: newTransaction.value.amount.toNumber(),
   });
 };
 
@@ -446,6 +507,10 @@ export const transactionRoutes: FastifyPluginAsync = async (app, opts) => {
           return res.code(401).send(response);
         case 'ValidationError':
           return res.code(400).send(response);
+        case 'Forbidden':
+          return res.code(403).send(response);
+        case 'TransactionNotFound':
+          return res.code(404).send(response);
         case 'InternalServerError':
           return res.code(500).send(response);
       }
