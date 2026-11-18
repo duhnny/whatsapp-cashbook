@@ -38,16 +38,22 @@ const listOfUrls = z
   })
   .pipe(z.array(HyperlinkSchema));
 
-const timezoneOffsetSchema = z
-  .string()
-  .regex(/^(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/, "Invalid timezone offset")
-  .optional();
+const timezoneSchema = z.string().refine((tz) => {
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: tz });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}, {
+  message: 'Fuso horário IANA inválido (ex: America/Sao_Paulo, UTC)',
+});
 
 const ConfigSchema = z.object({
   PORT:                         optionalIntSchema,
   BACKEND_HOST:                 z.hostname(),
   ALLOWED_ORIGINS:              listOfUrls,
-  TIMEZONE_OFFSET:              timezoneOffsetSchema,
+  TIMEZONE:                     timezoneSchema,
 
   // db config
   DATABASE_URL:                 HyperlinkSchema,
@@ -89,7 +95,7 @@ export const config = {
   WHATSAPP_SESSION_EXPIRY_SECS:
     parsed.data.WHATSAPP_SESSION_EXPIRY_SECS
     || DEFAULT_WHATSAPP_SESSION_EXPIRY_SECS,
-  TIMEZONE: parsed.data.TIMEZONE_OFFSET || DEFAULT_TIMEZONE_OFFSET,
+  TIMEZONE: parsed.data.TIMEZONE || DEFAULT_TIMEZONE_OFFSET,
 };
 
 // initialize clerk for auth
