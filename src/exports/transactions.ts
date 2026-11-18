@@ -8,6 +8,6 @@ export type {
 export type {
   CreateTransactionResponseBody,
   GetTransactionsSummaryResponseBody,
-  ListTransactionsResponseRoute,
+  ListTransactionsResponseBody,
   UpdateTransactionResponseBody,
 } from '../routes/transactions.js';

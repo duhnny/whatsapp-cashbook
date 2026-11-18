@@ -106,7 +106,7 @@ const listTransactionsRoute = authenticatedRoute(
   ),
 );
 
-export type ListTransactionsResponseRoute = AsyncReturn<typeof listTransactionsRoute>;
+export type ListTransactionsResponseBody = AsyncReturn<typeof listTransactionsRoute>;
 
 type SpendByMonth = {
   month: Date
