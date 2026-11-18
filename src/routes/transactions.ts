@@ -247,10 +247,10 @@ const getTransactionsSummary = async (req: TypedAuthedRequest<{ query: GetTransa
       .map((entry) => {
         return {
           category: entry.category,
-          total: entry._sum.amount ? entry._sum.amount.toNumber() : null,
+          total: entry._sum.amount ? -entry._sum.amount.toNumber() : 0,
         };
       })
-      .filter(entry => entry.total && entry.total > 0), // only net-negative categories
+      .filter(entry => entry.total > 0), // only net-negative categories
     spendByMonth: spendByMonth.value,
   });
 };
