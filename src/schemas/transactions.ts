@@ -20,6 +20,10 @@ export const ListTransactionsRequestQuerySchema = z.object({
 
 export type ListTransactionsRequestQuery = z.infer<typeof ListTransactionsRequestQuerySchema>;
 
+export const GetTransactionsSummaryRequestQuerySchema = ListTransactionsRequestQuerySchema;
+
+export type GetTransactionsSummaryRequestQuery = z.infer<typeof GetTransactionsSummaryRequestQuerySchema>;
+
 export const CreateTransactionRequestBodySchema = z.object({
   description: z.string(),
   amount:      z.number(),

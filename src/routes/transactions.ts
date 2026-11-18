@@ -2,6 +2,8 @@ import { InternalServerError, TypedAuthedRequest } from "../schemas/global.js";
 import {
   CreateTransactionRequestBody,
   CreateTransactionRequestBodySchema,
+  GetTransactionsSummaryRequestQuery,
+  GetTransactionsSummaryRequestQuerySchema,
   ListTransactionsRequestQuery,
   ListTransactionsRequestQuerySchema,
   UpdateTransactionRequestBody,
@@ -113,7 +115,7 @@ type SpendByMonth = {
   total: number
 }
 
-const getTransactionsSummary = async (req: TypedAuthedRequest<{ query: ListTransactionsRequestQuery }>) => {
+const getTransactionsSummary = async (req: TypedAuthedRequest<{ query: GetTransactionsSummaryRequestQuery }>) => {
   let start: Date | undefined = undefined;
   let end: Date | undefined = undefined;
 
@@ -255,7 +257,7 @@ const getTransactionsSummary = async (req: TypedAuthedRequest<{ query: ListTrans
 const getTransactionsSummaryRoute = authenticatedRoute(
   validatedRoute(
     {
-      query: ListTransactionsRequestQuerySchema,
+      query: GetTransactionsSummaryRequestQuerySchema,
     },
     getTransactionsSummary,
   ),
