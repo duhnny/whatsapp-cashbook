@@ -185,16 +185,6 @@ const getTransactionsSummary = async (req: TypedAuthedRequest<{ query: GetTransa
     return err(new InternalServerError('Unable to get balance. Try again in a few seconds'));
   }
 
-  if (balance.value._sum.amount === null) {
-    logger.log(InfoLvl.Error, 'Invalid sum of the amount while checking balance', {
-      reqId: req.id,
-      userId: req.user.id,
-      amount: balance.value._sum.amount === null,
-    });
-
-    return err(new InternalServerError('Unable to get balance. Try again in a few seconds'));
-  }
-
   const spendByCategory = await tryCatch(db.transaction.groupBy({
     by: ['category'],
     _sum: {
@@ -252,13 +242,15 @@ const getTransactionsSummary = async (req: TypedAuthedRequest<{ query: GetTransa
   }
 
   return ok({
-    balance: balance.value._sum.amount.toNumber(),
-    spendByCategory: spendByCategory.value.map((entry) => {
-      return {
-        category: entry.category,
-        total: entry._sum.amount ? entry._sum.amount.toNumber() : null,
-      };
-    }),
+    balance: balance.value._sum.amount ? balance.value._sum.amount.toNumber() : 0,
+    spendByCategory: spendByCategory.value
+      .map((entry) => {
+        return {
+          category: entry.category,
+          total: entry._sum.amount ? entry._sum.amount.toNumber() : null,
+        };
+      })
+      .filter(entry => entry.total && entry.total > 0), // only net-negative categories
     spendByMonth: spendByMonth.value,
   });
 };
