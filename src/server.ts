@@ -10,6 +10,7 @@ import { ZodTypeProvider } from 'fastify-type-provider-zod';
 // Importar rotas
 import { authRoutes } from './routes/auth.js';
 import { healthRoutes } from './routes/health.js';
+import { transactionRoutes } from './routes/transactions.js';
 import { webhookRoutes } from './routes/webhook.js';
 
 import { err, tryCatch } from './utils/result.js';
@@ -89,9 +90,10 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // Rotas da API
-app.register(authRoutes,    { prefix: '/auth' });
-app.register(healthRoutes,  { prefix: '/health' });
-app.register(webhookRoutes, { prefix: '/webhook' });
+app.register(authRoutes,        { prefix: '/auth' });
+app.register(healthRoutes,      { prefix: '/health' });
+app.register(transactionRoutes, { prefix: '/transactions' });
+app.register(webhookRoutes,     { prefix: '/webhook' });
 
 // Rota 404 - Not Found
 app.setNotFoundHandler((req, res) => {
