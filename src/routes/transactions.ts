@@ -96,7 +96,12 @@ const listTransactions = async (req: TypedAuthedRequest<{ query: ListTransaction
     return err(new InternalServerError('Unable list transactions. Try again in a few seconds'));
   }
 
-  return ok(transactions.value);
+  return ok(transactions.value.map(transaction => {
+    return {
+      ...transaction,
+      amount: transaction.amount.toNumber(),
+    };
+  }));
 };
 
 const listTransactionsRoute = authenticatedRoute(
@@ -243,11 +248,11 @@ const getTransactionsSummary = async (req: TypedAuthedRequest<{ query: GetTransa
   }
 
   return ok({
-    balance: balance.value._sum.amount,
+    balance: balance.value._sum.amount.toNumber(),
     spendByCategory: spendByCategory.value.map((entry) => {
       return {
         category: entry.category,
-        total: entry._sum.amount,
+        total: entry._sum.amount ? entry._sum.amount.toNumber() : null,
       };
     }),
     spendByMonth: spendByMonth.value,
@@ -303,6 +308,7 @@ const createTransaction = async (req: TypedAuthedRequest<{ body: CreateTransacti
 
   return ok({
     ...transaction.value,
+    amount: transaction.value.amount.toNumber(),
   });
 };
 
@@ -359,6 +365,7 @@ const updateTransaction = async (req: TypedAuthedRequest<{
 
   return ok({
     ...transaction.value,
+    amount: transaction.value.amount.toNumber(),
   });
 };
 
