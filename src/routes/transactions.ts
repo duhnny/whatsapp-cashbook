@@ -218,14 +218,20 @@ const getTransactionsSummary = async (req: TypedAuthedRequest<{ query: GetTransa
 
   const spendByMonth = await tryCatch(db.$queryRaw<SpendByMonth[]>`
     SELECT
-      date_trunc('month', "createdAt" AT TIME ZONE ${config.TIMEZONE}) AS "month",
-      -SUM(amount)::float AS total
-    FROM "Transaction"
-    WHERE
-      userId = ${req.user.id}
-      ${categorySqlFilter}
+      "month",
+      -SUM(net)::float AS total
+    FROM (
+      SELECT
+        date_trunc('month', "createdAt" AT TIME ZONE ${config.TIMEZONE}) AS "month",
+        SUM(amount) AS net
+      FROM "Transaction"
+      WHERE
+        userId = ${req.user.id}
+        ${categorySqlFilter}
+      GROUP BY "month", category
+      HAVING SUM(amount) < 0
+    ) AS net_negative_category_months
     GROUP BY "month"
-    HAVING SUM(amount) < 0
     ORDER BY "month" ASC;
   `);
 
