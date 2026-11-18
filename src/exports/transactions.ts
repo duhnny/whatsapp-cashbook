@@ -1,5 +1,6 @@
 export type {
   CreateTransactionRequestBody,
+  GetTransactionsSummaryRequestQuery,
   ListTransactionsRequestQuery,
   UpdateTransactionRequestParams,
   UpdateTransactionRequestBody,
