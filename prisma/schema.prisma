@@ -78,7 +78,7 @@ model Session {
 enum TransactionCategory {
   payment
   transportation
-  food_and_beverage @map("food and beverage")
+  food_and_beverage
   groceries
   bills
   subscriptions

@@ -6,10 +6,12 @@ import compression from '@fastify/compress';
 import formbody from '@fastify/formbody';
 import cookie from '@fastify/cookie';
 import { ZodTypeProvider } from 'fastify-type-provider-zod';
+import qs from 'qs';
 
 // Importar rotas
 import { authRoutes } from './routes/auth.js';
 import { healthRoutes } from './routes/health.js';
+import { transactionRoutes } from './routes/transactions.js';
 import { webhookRoutes } from './routes/webhook.js';
 
 import { err, tryCatch } from './utils/result.js';
@@ -23,6 +25,7 @@ import { agentMemory, config } from './config/config.js';
 
 const app = Fastify({
   bodyLimit: 10000000,
+  querystringParser: (str) => qs.parse(str),
 }).withTypeProvider<ZodTypeProvider>();
 const PORT = process.env.PORT? parseInt(process.env.PORT) : 3000;
 
@@ -89,9 +92,10 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // Rotas da API
-app.register(authRoutes,    { prefix: '/auth' });
-app.register(healthRoutes,  { prefix: '/health' });
-app.register(webhookRoutes, { prefix: '/webhook' });
+app.register(authRoutes,        { prefix: '/auth' });
+app.register(healthRoutes,      { prefix: '/health' });
+app.register(transactionRoutes, { prefix: '/transactions' });
+app.register(webhookRoutes,     { prefix: '/webhook' });
 
 // Rota 404 - Not Found
 app.setNotFoundHandler((req, res) => {

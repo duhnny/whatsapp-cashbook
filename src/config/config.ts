@@ -2,7 +2,11 @@ import dotenv from 'dotenv';
 import { PrismaClient } from '../../prisma/client/client.js';
 import { InfoLvl, logger } from '../utils/logging.js';
 import { HyperlinkSchema } from '../utils/strings.js';
-import { DEFAULT_PORT, DEFAULT_WHATSAPP_SESSION_EXPIRY_SECS } from './constants.js';
+import {
+  DEFAULT_PORT,
+  DEFAULT_TIMEZONE_OFFSET,
+  DEFAULT_WHATSAPP_SESSION_EXPIRY_SECS,
+} from './constants.js';
 
 import { PrismaPg } from '@prisma/adapter-pg';
 import z from 'zod';
@@ -34,10 +38,22 @@ const listOfUrls = z
   })
   .pipe(z.array(HyperlinkSchema));
 
+const timezoneSchema = z.string().refine((tz) => {
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: tz });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}, {
+  message: 'Fuso horário IANA inválido (ex: America/Sao_Paulo, UTC)',
+});
+
 const ConfigSchema = z.object({
   PORT:                         optionalIntSchema,
   BACKEND_HOST:                 z.hostname(),
   ALLOWED_ORIGINS:              listOfUrls,
+  TIMEZONE:                     timezoneSchema,
 
   // db config
   DATABASE_URL:                 HyperlinkSchema,
@@ -79,6 +95,7 @@ export const config = {
   WHATSAPP_SESSION_EXPIRY_SECS:
     parsed.data.WHATSAPP_SESSION_EXPIRY_SECS
     || DEFAULT_WHATSAPP_SESSION_EXPIRY_SECS,
+  TIMEZONE: parsed.data.TIMEZONE || DEFAULT_TIMEZONE_OFFSET,
 };
 
 // initialize clerk for auth
