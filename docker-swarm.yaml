@@ -8,6 +8,7 @@ services:
     networks:
       - db
       - whatsapp
+      - public
     deploy:
       mode: replicated
       replicas: 1
@@ -40,3 +41,6 @@ networks:
   whatsapp:
     external: true
     name: ${WHATSAPP_NETWORK}
+  public:
+    external: true
+    name: ${PUBLIC_NETWORK}
