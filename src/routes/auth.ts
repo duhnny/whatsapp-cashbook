@@ -128,7 +128,7 @@ const requestWhatsappVerification = async (req: TypedAuthedRequest<{ body: Reque
     });
   }
 
-  if (event.value.processingStage === 0) {
+  if (event.value.processingStage < EventProcessingStages.users_creation.user_created_in_credentials_provider) {
     logger.log(InfoLvl.Trace, 'Attempt to verify whatsapp before credentials provider user creation', {
       reqId: req.id,
       userId: req.user.id,
