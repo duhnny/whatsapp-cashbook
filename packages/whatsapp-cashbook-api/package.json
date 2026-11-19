@@ -1,6 +1,6 @@
 {
   "name": "@duhnny/whatsapp-cashbook-api",
-  "version": "0.0.1",
+  "version": "0.2.0",
   "description": "Type definitions for the whatsapp cashbook API",
   "license": "ISC",
   "author": "Daniel Betoret",
