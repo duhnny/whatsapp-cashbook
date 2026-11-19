@@ -1,4 +1,5 @@
 import type {
+  IsUserWhatsappVerifiedResponseBody,
   RequestWhatsappVerificationRequestBody,
   RequestWhatsappVerificationResponseBody,
 } from '../../../src/exports/auth.js';
@@ -25,6 +26,10 @@ export type * from '../../../src/exports/transactions.js';
 
 export type ApiRoutes = {
   '/auth/whatsapp-verification': {
+    GET: {
+      response: IsUserWhatsappVerifiedResponseBody,
+    },
+
     POST: {
       body: RequestWhatsappVerificationRequestBody,
       response: RequestWhatsappVerificationResponseBody,
