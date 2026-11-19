@@ -4,7 +4,7 @@ import { InfoLvl, logger } from '../utils/logging.js';
 import { HyperlinkSchema } from '../utils/strings.js';
 import {
   DEFAULT_PORT,
-  DEFAULT_TIMEZONE_OFFSET,
+  DEFAULT_TIMEZONE,
   DEFAULT_WHATSAPP_SESSION_EXPIRY_SECS,
 } from './constants.js';
 
@@ -95,7 +95,7 @@ export const config = {
   WHATSAPP_SESSION_EXPIRY_SECS:
     parsed.data.WHATSAPP_SESSION_EXPIRY_SECS
     || DEFAULT_WHATSAPP_SESSION_EXPIRY_SECS,
-  TIMEZONE: parsed.data.TIMEZONE || DEFAULT_TIMEZONE_OFFSET,
+  TIMEZONE: parsed.data.TIMEZONE || DEFAULT_TIMEZONE,
 };
 
 // initialize clerk for auth
