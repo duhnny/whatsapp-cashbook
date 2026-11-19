@@ -320,7 +320,7 @@ class EventsHandlerService {
         const whatsappResponse = await whatsappService.sendText({
           user: user.value,
           text: `Verificação por WhatsApp: Se você é ${user.value.name} e registrou recentemente nos`
-            + `nossos serviços, por favor digite 'SIM' para confirmar. Caso contrário, responda com 'NÃO'.`,
+            + ` nossos serviços, por favor digite 'SIM' para confirmar. Caso contrário, responda com 'NÃO'.`,
           idempotencyKey: event.idempotencyKey + '_' + event.processingStage,
         });
 
