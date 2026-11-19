@@ -226,7 +226,7 @@ const getTransactionsSummary = async (req: TypedAuthedRequest<{ query: GetTransa
         SUM(amount) AS net
       FROM "Transaction"
       WHERE
-        userId = ${req.user.id}
+        "userId" = ${req.user.id}
         ${categorySqlFilter}
       GROUP BY "month", category
       HAVING SUM(amount) < 0
