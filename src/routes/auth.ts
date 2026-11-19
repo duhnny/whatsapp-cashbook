@@ -4,10 +4,8 @@ import { validatedRoute } from "../middleware/validation.js";
 import {
   RequestWhatsappVerificationRequestBody,
   RequestWhatsappVerificationRequestBodySchema,
-  SignupRequestBody,
-  SignupRequestBodySchema,
 } from "../schemas/auth.js";
-import { InternalServerError, TypedAuthedRequest, TypedRequest } from "../schemas/global.js";
+import { InternalServerError, TypedAuthedRequest } from "../schemas/global.js";
 import { InfoLvl, logger } from "../utils/logging.js";
 import { err, ok, syncTryCatch, tryCatch } from "../utils/result.js";
 import { EventProcessingStages, eventsHandlerService } from "../services/events.js";
@@ -15,6 +13,9 @@ import { quickHash } from "../utils/strings.js";
 import { authenticatedRoute } from "../middleware/auth.js";
 import { whatsappService } from "../services/whatsapp.js";
 import { AsyncReturn } from "../utils/types.js";
+
+const userIsWhatsappVerified = async (req: AuthedRequest) => {
+};
 
 export class UserAlreadyExistsError extends Error {
   readonly _tag = 'UserAlreadyExists'
