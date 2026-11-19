@@ -16,7 +16,7 @@ import { webhookRoutes } from './routes/webhook.js';
 
 import { err, tryCatch } from './utils/result.js';
 import { InternalServerError } from './schemas/global.js';
-import { agentMemory, config } from './config/config.js';
+import { agentMemory, config, db } from './config/config.js';
 
 // Isto permite serialização de big int
 (BigInt.prototype as any).toJSON = function () {
@@ -115,6 +115,19 @@ app.setErrorHandler((error, req, res) => {
 });
 
 const start = async () => {
+  // test database connection
+  const databaseTestResult = await tryCatch(db.$queryRaw`SELECT 1`);
+
+  if (databaseTestResult._tag === 'err') {
+    logger.log(InfoLvl.Fatal, 'Unable to connect to database on startup', {
+      error: databaseTestResult.error,
+    });
+
+    process.exit(1);
+  }
+
+  logger.log(InfoLvl.Debug, 'Successfully tested database connection');
+
   // setup agent memory tables in database
   const agentMemorySetupResult = await tryCatch(agentMemory.setup());
 
