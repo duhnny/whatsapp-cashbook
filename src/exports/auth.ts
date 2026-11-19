@@ -1,4 +1,5 @@
 export type {
+  IsUserWhatsappVerifiedResponseBody,
   RequestWhatsappVerificationResponseBody,
 } from '../routes/auth.js';
 

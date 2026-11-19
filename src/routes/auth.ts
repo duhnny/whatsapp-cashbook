@@ -5,7 +5,7 @@ import {
   RequestWhatsappVerificationRequestBody,
   RequestWhatsappVerificationRequestBodySchema,
 } from "../schemas/auth.js";
-import { InternalServerError, TypedAuthedRequest } from "../schemas/global.js";
+import { AuthedRequest, InternalServerError, TypedAuthedRequest } from "../schemas/global.js";
 import { InfoLvl, logger } from "../utils/logging.js";
 import { err, ok, syncTryCatch, tryCatch } from "../utils/result.js";
 import { EventProcessingStages, eventsHandlerService } from "../services/events.js";
@@ -14,8 +14,44 @@ import { authenticatedRoute } from "../middleware/auth.js";
 import { whatsappService } from "../services/whatsapp.js";
 import { AsyncReturn } from "../utils/types.js";
 
-const userIsWhatsappVerified = async (req: AuthedRequest) => {
+const isUserWhatsappVerified = async (req: AuthedRequest) => {
+  const userData = await tryCatch(db.user.findUnique({
+    select: {
+      id: true,
+      whatsappVerified: true,
+    },
+    where: {
+      id: req.user.id,
+    },
+  }));
+
+  if (userData._tag === 'err') {
+    logger.log(InfoLvl.Error, 'Unable to query user whatsappVerified status', {
+      reqId: req.id,
+      userId: req.user.id,
+      error: userData.error,
+    });
+
+    return err(new InternalServerError('Unable to get whatsapp-verified status for user. Please try again later'));
+  }
+
+  if (!userData.value) {
+    logger.log(InfoLvl.Error, 'Did not find authenticated user', {
+      reqId: req.id,
+      userId: req.user.id,
+    });
+
+    return err(new InternalServerError('Unable to get whatsapp-verified status for user. Please try again later'));
+  }
+
+  return ok({
+    whatsappVerified: userData.value.whatsappVerified,
+  });
 };
+
+const isUserWhatsappVerifiedRoute = authenticatedRoute(isUserWhatsappVerified);
+
+export type IsUserWhatsappVerifiedResponseBody = AsyncReturn<typeof isUserWhatsappVerifiedRoute>;
 
 export class UserAlreadyExistsError extends Error {
   readonly _tag = 'UserAlreadyExists'
@@ -245,6 +281,22 @@ const requestWhatsappVerificationRoute = authenticatedRoute(
 export type RequestWhatsappVerificationResponseBody = AsyncReturn<typeof requestWhatsappVerificationRoute>;
 
 export const authRoutes: FastifyPluginAsync = async (app, opts) => {
+  app.get('/whatsapp-verification', async (req, res) => {
+    const response = await isUserWhatsappVerifiedRoute(req);
+
+    if (response._tag === 'err') {
+      switch (response.error._tag) {
+        case 'Unauthenticated':
+        case 'MalformedJWT':
+          return res.code(401).send(response);
+        case 'InternalServerError':
+          return res.code(500).send(response);
+      }
+    }
+
+    return res.code(200).send(ok(response.value));
+  });
+
   app.post('/whatsapp-verification', async (req, res) => {
     const response = await requestWhatsappVerificationRoute(req);
 
