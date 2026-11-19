@@ -16,7 +16,18 @@ services:
       resources:
         limits:
           cpus: '0.2'
+      labels:
+        # traefik config
+        - 'traefik.enable=true'
 
+        # api
+        - "traefik.http.routers.${DOCKER_STACK_NAME}_cashbook.rule=Host(`$BACKEND_HOST`)"
+        - "traefik.http.routers.${DOCKER_STACK_NAME}_cashbook.entrypoints=websecure"
+        - "traefik.http.routers.${DOCKER_STACK_NAME}_cashbook.tls=true"
+        - "traefik.http.routers.${DOCKER_STACK_NAME}_cashbook.tls.certresolver=leresolver"
+        - "traefik.http.routers.${DOCKER_STACK_NAME}_cashbook.tls.domains.main=$BACKEND_HOST"
+        - "traefik.http.routers.${DOCKER_STACK_NAME}_cashbook.service=${DOCKER_STACK_NAME}_cashbook"
+        - "traefik.http.services.${DOCKER_STACK_NAME}_cashbook.loadbalancer.server.port=${PORT}"
 
 secrets:
   whatsapp-cashbook-env:
