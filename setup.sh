@@ -49,6 +49,14 @@ else
     exit 1
 fi
 
+if docker network ls | grep -q "${PUBLIC_NETWORK}"; then
+    echo "-> public network exists"
+else
+    unload .env
+    echo "ERROR: public network does not exist. Exiting."
+    exit 1
+fi
+
 # do the cleanup
 echo "-> cleaning up"
 
