@@ -14,7 +14,7 @@ load .env
 
 # check if docker stack name is setup correctly
 if [[ -v DOCKER_STACK_NAME ]]; then
-    if docker stack ls | grep -q "$DOCKER_STACK_NAME"; then
+    if docker stack ls --format '{{.Name}}' | grep -Fxq "$DOCKER_STACK_NAME"; then
         echo stack with name "$DOCKER_STACK_NAME" already exists
         exit 1
     fi
@@ -33,7 +33,7 @@ echo "-> image built"
 # check necessary networks
 echo "-> checking networks"
 
-if docker network ls | grep -q "${DB_NETWORK}"; then
+if docker network ls --format '{{.Name}}' | grep -Fxq "${DB_NETWORK}"; then
     echo "-> db network exists"
 else
     unload .env
@@ -41,7 +41,7 @@ else
     exit 1
 fi
 
-if docker network ls | grep -q "${WHATSAPP_NETWORK}"; then
+if docker network ls --format '{{.Name}}' | grep -Fxq "${WHATSAPP_NETWORK}"; then
     echo "-> whatsapp network exists"
 else
     unload .env
@@ -49,7 +49,7 @@ else
     exit 1
 fi
 
-if docker network ls | grep -q "${PUBLIC_NETWORK}"; then
+if docker network ls --format '{{.Name}}' | grep -Fxq "${PUBLIC_NETWORK}"; then
     echo "-> public network exists"
 else
     unload .env
