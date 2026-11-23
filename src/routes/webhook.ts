@@ -182,9 +182,9 @@ const processUnofficialWebhook = async (req: TypedRequest<{ body: UnofficialWebh
             user,
             text: 'Confirme as transaçõoes:' + '\n\n'
               + transactionsInOutbox.value.map(transaction => {
-                return 'Transação: ' + transaction.description + '\n'
-                  + 'Categoria: ' + transaction.category + '\n'
-                  + 'Valor: R$' + transaction.amount + '\n'
+                return '🧾 Transação: ' + transaction.description + '\n'
+                  + '🏷️ Categoria: ' + transaction.category + '\n'
+                  + `💲 Valor: ${transaction.amount.toNumber() < 0? '-' : ''}R$ ${transaction.amount.abs()}\n`
               }) + '\n'
               + 'Responda com \'SIM\' ou \'NÃO\'',
           });
