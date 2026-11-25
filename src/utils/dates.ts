@@ -25,7 +25,7 @@ export const getEndOfWeek = (from: Temporal.ZonedDateTime) => {
 }
 
 export const getEndOfMonth = (from: Temporal.ZonedDateTime) => {
-  const daysToAdd = from.daysInMonth - from.day;
+  const daysToAdd = from.daysInMonth - from.day + 1;
 
   const firstDayOfNextMonth = from.add({ days: daysToAdd });
 
