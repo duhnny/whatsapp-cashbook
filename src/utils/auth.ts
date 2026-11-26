@@ -1,6 +1,6 @@
 import { Role } from "../../prisma/client/enums.js"
 
-interface UserWithRoles {
+export interface UserWithRoles {
   roles: Role[]
 }
 export const userHasOneOfRoles = (user: UserWithRoles, roles: Role[]) => {
