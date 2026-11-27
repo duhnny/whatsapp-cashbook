@@ -11,6 +11,8 @@ import type {
 import type {
   CreateTransactionRequestBody,
   CreateTransactionResponseBody,
+  DeleteTransactionRequestParams,
+  DeleteTransactionResponseBody,
   GetTransactionsSummaryRequestQuery,
   GetTransactionsSummaryResponseBody,
   ListTransactionsRequestQuery,
@@ -66,6 +68,11 @@ export type ApiRoutes = {
       params: UpdateTransactionRequestParams,
       body: UpdateTransactionRequestBody,
       response: UpdateTransactionResponseBody,
+    },
+
+    DELETE: {
+      params: DeleteTransactionRequestParams,
+      response: DeleteTransactionResponseBody,
     },
   },
 }
