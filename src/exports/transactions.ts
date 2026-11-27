@@ -1,5 +1,6 @@
 export type {
   CreateTransactionRequestBody,
+  DeleteTransactionRequestParams,
   GetTransactionsSummaryRequestQuery,
   ListTransactionsRequestQuery,
   UpdateTransactionRequestParams,
@@ -8,6 +9,7 @@ export type {
 
 export type {
   CreateTransactionResponseBody,
+  DeleteTransactionResponseBody,
   GetTransactionsSummaryResponseBody,
   ListTransactionsResponseBody,
   UpdateTransactionResponseBody,

@@ -47,3 +47,9 @@ export const UpdateTransactionRequestBodySchema = z.object({
 });
 
 export type UpdateTransactionRequestBody = z.infer<typeof UpdateTransactionRequestBodySchema>;
+
+export const DeleteTransactionRequestParamsSchema = z.object({
+  id: IdSchema,
+});
+
+export type DeleteTransactionRequestParams = z.infer<typeof DeleteTransactionRequestParamsSchema>;

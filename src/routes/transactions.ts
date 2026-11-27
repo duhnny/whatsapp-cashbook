@@ -2,6 +2,8 @@ import { ForbiddenError, InternalServerError, TypedAuthedRequest } from "../sche
 import {
   CreateTransactionRequestBody,
   CreateTransactionRequestBodySchema,
+  DeleteTransactionRequestParams,
+  DeleteTransactionRequestParamsSchema,
   GetTransactionsSummaryRequestQuery,
   GetTransactionsSummaryRequestQuerySchema,
   ListTransactionsRequestQuery,
@@ -440,6 +442,97 @@ const updateTransactionRoute = authenticatedRoute(
 
 export type UpdateTransactionResponseBody = AsyncReturn<typeof updateTransactionRoute>;
 
+const deleteTransaction = async (req: TypedAuthedRequest<{ params: DeleteTransactionRequestParams }>) => {
+  const transaction = await tryCatch(db.transaction.findUnique({
+    select: {
+      id: true,
+      userId: true,
+    },
+    where: {
+      id: req.params.id,
+    },
+  }));
+
+  if (transaction._tag === 'err') {
+    logger.log(InfoLvl.Error, 'Unable to get transaction', {
+      reqId: req.id,
+      transactionId: req.params.id,
+      error: transaction.error,
+    });
+
+    return err(new InternalServerError('Unable to delete transaction. Please try again in a few seconds'));
+  }
+
+  if (!transaction.value) {
+    logger.log(InfoLvl.Debug, 'Tried to delete unexistent transaction', {
+      reqId: req.id,
+      userId: req.user.id,
+      transactionId: req.params.id,
+    });
+
+    return ok({
+      success: true,
+      message: 'Transaction does not exist' as const,
+    });
+  }
+
+  if (transaction.value.userId !== req.user.id) {
+    logger.log(InfoLvl.Info, 'User tried to delete transaction they do not have access to', {
+      reqId: req.id,
+      userId: req.user.id,
+      transactionId: req.params.id,
+      transactionOwnerId: transaction.value.userId,
+    });
+
+    return err(new ForbiddenError('User does not have access to this transaction'));
+  }
+
+  logger.log(InfoLvl.Trace, 'Transaction exists and user has access to it', {
+    reqId: req.id,
+    userId: req.user.id,
+    transactionId: req.params.id,
+  });
+
+  const deletionResult = await tryCatch(db.transaction.delete({
+    where: {
+      id: req.params.id,
+    },
+  }));
+
+  if (deletionResult._tag === 'err') {
+    logger.log(InfoLvl.Error, 'Unable to delete transaction', {
+      reqId: req.id,
+      userId: req.user.id,
+      transactionId: req.params.id,
+      error: deletionResult.error,
+    });
+
+    return err(new InternalServerError('Unable to delete transaction. Please try again in a few seconds'));
+  }
+
+  logger.log(InfoLvl.Debug, 'Transaction deleted successfully', {
+    reqId: req.id,
+    userId: req.user.id,
+    transactionId: req.params.id,
+  });
+
+  return ok({
+    success: true,
+    message: 'Transaction deleted successfully!' as const,
+  });
+};
+
+const deleteTransactionRoute = authenticatedRoute(
+  validatedRoute(
+    {
+      params: DeleteTransactionRequestParamsSchema,
+    },
+    deleteTransaction,
+  ),
+);
+
+export type DeleteTransactionResponseBody = AsyncReturn<typeof deleteTransactionRoute>;
+
 export const transactionRoutes: FastifyPluginAsync = async (app, opts) => {
   app.get('/', async (req, res) => {
     const response = await listTransactionsRoute(req);
@@ -509,6 +602,26 @@ export const transactionRoutes: FastifyPluginAsync = async (app, opts) => {
           return res.code(403).send(response);
         case 'TransactionNotFound':
           return res.code(404).send(response);
+        case 'InternalServerError':
+          return res.code(500).send(response);
+      }
+    }
+
+    return res.code(200).send(ok(response.value));
+  });
+
+  app.delete('/:id', async (req, res) => {
+    const response = await deleteTransactionRoute(req);
+
+    if (response._tag === 'err') {
+      switch (response.error._tag) {
+        case 'Unauthenticated':
+        case 'MalformedJWT':
+          return res.code(401).send(response);
+        case 'ValidationError':
+          return res.code(400).send(response);
+        case 'Forbidden':
+          return res.code(403).send(response);
         case 'InternalServerError':
           return res.code(500).send(response);
       }
